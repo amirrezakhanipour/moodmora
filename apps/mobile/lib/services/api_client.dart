@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/envelope.dart';
+
 class ApiClient {
   ApiClient({required this.baseUrl, http.Client? client, Duration? timeout})
     : _client = client ?? http.Client(),
@@ -54,12 +56,33 @@ class ApiClient {
     }
   }
 
+  /// Typed envelope (Contract v1)
+  Future<Envelope<T>> getEnvelope<T>(
+    String path, {
+    required FromJson<T> fromJson,
+    String expectedContractVersion = '1.0.0',
+  }) async {
+    final raw = await getJson(path);
+    final env = Envelope<T>.fromJson(raw, fromJson: fromJson);
+
+    if (env.meta.contractVersion != expectedContractVersion) {
+      throw ApiException(
+        message:
+            'Unexpected contract_version: ${env.meta.contractVersion} (expected $expectedContractVersion)',
+        statusCode: 0,
+        path: 'GET $path',
+        rawBody: raw.toString(),
+      );
+    }
+
+    return env;
+  }
+
   Map<String, dynamic> _handle(
     http.Response res, {
     required String method,
     required String path,
   }) {
-    // Always keep raw body for debugging
     final raw = res.body;
 
     if (res.statusCode < 200 || res.statusCode >= 300) {

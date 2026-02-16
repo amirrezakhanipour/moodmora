@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'app_config.dart';
+import 'models/health_payload.dart';
 import 'services/api_client.dart';
 
 void main() {
@@ -11,12 +12,18 @@ void main() {
   // Smoke test (dev): call /health after app boots
   Timer(const Duration(seconds: 1), () async {
     debugPrint('BOOT: baseUrl=${AppConfig.apiBaseUrl}');
-    debugPrint('BOOT: starting health call...');
+    debugPrint('BOOT: starting health envelope call...');
 
     final api = ApiClient(baseUrl: AppConfig.apiBaseUrl);
     try {
-      final json = await api.getJson('/health');
-      debugPrint('HEALTH: $json');
+      final env = await api.getEnvelope(
+        '/health',
+        fromJson: HealthPayload.fromJson,
+      );
+
+      debugPrint(
+        'HEALTH ENV: status=${env.status} service=${env.data?.service} ok=${env.data?.ok}',
+      );
     } catch (e) {
       debugPrint('HEALTH ERROR: $e');
     }

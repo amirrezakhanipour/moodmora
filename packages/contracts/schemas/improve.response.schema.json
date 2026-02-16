@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "moodmora://schemas/improve.response.schema.json",
+  "title": "ImproveResponseData",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mode", "suggestions", "risk", "voice_match_score"],
+  "properties": {
+    "mode": { "type": "string", "const": "IMPROVE" },
+    "voice_match_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "score", "reasons"],
+      "properties": {
+        "level": { "type": "string", "enum": ["green", "yellow", "red"] },
+        "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "reasons": { "type": "array", "items": { "type": "string" }, "maxItems": 10 }
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "text", "why_it_works"],
+        "properties": {
+          "label": { "type": "string", "minLength": 1 },
+          "text": { "type": "string", "minLength": 1 },
+          "why_it_works": { "type": "string", "minLength": 1 },
+          "emotion_preview": { "type": "array", "items": { "type": "string" }, "maxItems": 3 }
+        }
+      }
+    }
+  }
+}

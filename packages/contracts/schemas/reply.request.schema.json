@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "moodmora://schemas/reply.request.schema.json",
+  "title": "ReplyRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["input"],
+  "properties": {
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["received_text"],
+      "properties": {
+        "received_text": { "type": "string", "minLength": 1 },
+        "context": { "type": "string" },
+        "output_variant": { "type": "string", "enum": ["AUTO", "FA_SCRIPT", "FINGLISH", "EN"] },
+        "hard_mode": { "type": "boolean" },
+        "contact_id": { "type": "string" }
+      }
+    }
+  }
+}

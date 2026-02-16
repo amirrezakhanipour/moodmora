@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "moodmora://schemas/envelope.schema.json",
+  "title": "ResponseEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "request_id", "timestamp_ms", "data", "error", "meta"],
+  "properties": {
+    "status": { "type": "string", "enum": ["ok", "blocked", "error"] },
+    "request_id": { "type": "string", "minLength": 6 },
+    "timestamp_ms": { "type": "integer", "minimum": 0 },
+    "data": { "type": ["object", "null"] },
+    "error": { "type": ["object", "null"] },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["contract_version"],
+      "properties": {
+        "contract_version": { "type": "string", "const": "1.0.0" }
+      }
+    }
+  }
+}

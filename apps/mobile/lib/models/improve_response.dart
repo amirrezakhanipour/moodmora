@@ -1,0 +1,79 @@
+import 'suggestion.dart';
+
+class ImproveRisk {
+  ImproveRisk({
+    required this.level,
+    required this.score,
+    required this.reasons,
+  });
+
+  final String level;
+  final int score;
+  final List<String> reasons;
+
+  factory ImproveRisk.fromJson(Map<String, dynamic> json) {
+    final level = json['level'];
+    final score = json['score'];
+    final reasonsRaw = json['reasons'];
+
+    if (level is! String) {
+      throw FormatException('risk.level missing');
+    }
+    if (score is! int) {
+      throw FormatException('risk.score missing');
+    }
+
+    final reasons = (reasonsRaw is List)
+        ? reasonsRaw.whereType<String>().toList()
+        : <String>[];
+
+    return ImproveRisk(level: level, score: score, reasons: reasons);
+  }
+}
+
+class ImproveResponse {
+  ImproveResponse({
+    required this.mode,
+    required this.voiceMatchScore,
+    required this.risk,
+    required this.suggestions,
+  });
+
+  final String mode;
+  final int voiceMatchScore;
+  final ImproveRisk risk;
+  final List<Suggestion> suggestions;
+
+  factory ImproveResponse.fromJson(Map<String, dynamic> json) {
+    final mode = json['mode'];
+    final vms = json['voice_match_score'];
+    final riskJson = json['risk'];
+    final suggestionsJson = json['suggestions'];
+
+    if (mode is! String) {
+      throw FormatException('mode missing');
+    }
+    if (vms is! int) {
+      throw FormatException('voice_match_score missing');
+    }
+    if (riskJson is! Map<String, dynamic>) {
+      throw FormatException('risk missing');
+    }
+
+    final risk = ImproveRisk.fromJson(riskJson);
+
+    final List<Suggestion> suggestions = (suggestionsJson is List)
+        ? suggestionsJson
+              .whereType<Map<String, dynamic>>()
+              .map(Suggestion.fromJson)
+              .toList()
+        : <Suggestion>[];
+
+    return ImproveResponse(
+      mode: mode,
+      voiceMatchScore: vms,
+      risk: risk,
+      suggestions: suggestions,
+    );
+  }
+}

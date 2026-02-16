@@ -1,15 +1,238 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-class ImproveScreen extends StatelessWidget {
+import '../app_config.dart';
+import '../models/improve_response.dart';
+import '../services/api_client.dart';
+
+class ImproveScreen extends StatefulWidget {
   const ImproveScreen({super.key});
 
   @override
+  State<ImproveScreen> createState() => _ImproveScreenState();
+}
+
+class _ImproveScreenState extends State<ImproveScreen> {
+  final _controller = TextEditingController();
+  bool _hardMode = false;
+  String _variant = 'FINGLISH';
+
+  bool _loading = false;
+  ImproveResponse? _result;
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  bool get _canSubmit => !_loading && _controller.text.trim().isNotEmpty;
+
+  Future<void> _submit() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _result = null;
+    });
+
+    final api = ApiClient(baseUrl: AppConfig.apiBaseUrl);
+
+    final body = {
+      'input': {
+        'draft_text': _controller.text.trim(),
+        'hard_mode': _hardMode,
+        'output_variant': _variant,
+      },
+    };
+
+    try {
+      final env = await api.postEnvelope(
+        '/v1/improve',
+        body: body,
+        fromJson: ImproveResponse.fromJson,
+      );
+
+      setState(() {
+        _result = env.data;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _copy(String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Copied')));
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final suggestions = _result?.suggestions ?? const [];
+
     return Scaffold(
       appBar: AppBar(title: const Text('Improve')),
-      body: const Padding(
-        padding: EdgeInsets.all(16),
-        child: Text('TODO: Improve form + output'),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text(
+            'Paste your draft message',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controller,
+            maxLines: 6,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              hintText: 'Write your message here...',
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  key: ValueKey(_variant),
+                  initialValue: _variant,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    labelText: 'Output variant',
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'FINGLISH',
+                      child: Text('Finglish'),
+                    ),
+                    DropdownMenuItem(value: 'EN', child: Text('English')),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() => _variant = v);
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SwitchListTile(
+                  value: _hardMode,
+                  onChanged: (v) => setState(() => _hardMode = v),
+                  title: const Text('Hard mode'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: _canSubmit ? _submit : null,
+            child: _loading
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Improve'),
+          ),
+          const SizedBox(height: 16),
+          if (_error != null) ...[
+            Text(_error!, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 12),
+          ],
+          if (_result != null) ...[
+            _RiskCard(
+              level: _result!.risk.level,
+              score: _result!.risk.score,
+              reasons: _result!.risk.reasons,
+              voiceMatchScore: _result!.voiceMatchScore,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Suggestions',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            for (final s in suggestions) ...[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        s.label,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(s.text),
+                      const SizedBox(height: 8),
+                      Text(
+                        s.whyItWorks,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          OutlinedButton(
+                            onPressed: () => _copy(s.text),
+                            child: const Text('Copy'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RiskCard extends StatelessWidget {
+  const _RiskCard({
+    required this.level,
+    required this.score,
+    required this.reasons,
+    required this.voiceMatchScore,
+  });
+
+  final String level;
+  final int score;
+  final List<String> reasons;
+  final int voiceMatchScore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Risk: $level ($score) • Voice match: $voiceMatchScore',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            for (final r in reasons) Text('• $r'),
+          ],
+        ),
       ),
     );
   }

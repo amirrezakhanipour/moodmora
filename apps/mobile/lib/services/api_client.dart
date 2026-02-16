@@ -56,7 +56,6 @@ class ApiClient {
     }
   }
 
-  /// Typed envelope (Contract v1)
   Future<Envelope<T>> getEnvelope<T>(
     String path, {
     required FromJson<T> fromJson,
@@ -78,6 +77,28 @@ class ApiClient {
     return env;
   }
 
+  Future<Envelope<T>> postEnvelope<T>(
+    String path, {
+    required Map<String, dynamic> body,
+    required FromJson<T> fromJson,
+    String expectedContractVersion = '1.0.0',
+  }) async {
+    final raw = await postJson(path, body: body);
+    final env = Envelope<T>.fromJson(raw, fromJson: fromJson);
+
+    if (env.meta.contractVersion != expectedContractVersion) {
+      throw ApiException(
+        message:
+            'Unexpected contract_version: ${env.meta.contractVersion} (expected $expectedContractVersion)',
+        statusCode: 0,
+        path: 'POST $path',
+        rawBody: raw.toString(),
+      );
+    }
+
+    return env;
+  }
+
   Map<String, dynamic> _handle(
     http.Response res, {
     required String method,
@@ -85,7 +106,30 @@ class ApiClient {
   }) {
     final raw = res.body;
 
+    // Note: api-worker returns envelope even on 4xx/5xx sometimes,
+    // but we treat non-2xx as error here to surface quickly.
     if (res.statusCode < 200 || res.statusCode >= 300) {
+      // Try parse envelope error (best effort) to show nicer message.
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          final errObj = decoded['error'];
+          final msg = (errObj is Map<String, dynamic>)
+              ? errObj['message']
+              : null;
+          if (msg is String && msg.isNotEmpty) {
+            throw ApiException(
+              message: msg,
+              statusCode: res.statusCode,
+              path: '$method $path',
+              rawBody: raw,
+            );
+          }
+        }
+      } catch (_) {
+        // ignore parsing failures
+      }
+
       throw ApiException(
         message: 'HTTP ${res.statusCode} for $method $path',
         statusCode: res.statusCode,

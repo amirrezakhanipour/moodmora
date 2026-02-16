@@ -43,7 +43,20 @@ class _ImproveScreenState extends State<ImproveScreen> {
 
   bool get _canSubmit => !_loading && _controller.text.trim().isNotEmpty;
 
+  void _clearAll() {
+    setState(() {
+      _controller.clear();
+      _result = null;
+      _error = null;
+      _loading = false;
+    });
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   Future<void> _submit() async {
+    // UX: dismiss keyboard
+    FocusManager.instance.primaryFocus?.unfocus();
+
     setState(() {
       _loading = true;
       _error = null;
@@ -75,9 +88,11 @@ class _ImproveScreenState extends State<ImproveScreen> {
         _error = e.toString();
       });
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -114,7 +129,7 @@ class _ImproveScreenState extends State<ImproveScreen> {
               border: OutlineInputBorder(),
               hintText: 'Write your message here...',
             ),
-            onChanged: (_) => setState(() {}), // <-- مهم: enable/disable button
+            onChanged: (_) => setState(() {}), // enable/disable button
           ),
 
           const SizedBox(height: 12),
@@ -156,15 +171,32 @@ class _ImproveScreenState extends State<ImproveScreen> {
 
           const SizedBox(height: 12),
 
-          FilledButton(
-            onPressed: _canSubmit ? _submit : null,
-            child: _loading
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Improve'),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: _canSubmit ? _submit : null,
+                  child: _loading
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Improve'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton(
+                onPressed:
+                    (_loading &&
+                        !_canSubmit &&
+                        _result == null &&
+                        _error == null)
+                    ? null
+                    : _clearAll,
+                child: const Text('Clear'),
+              ),
+            ],
           ),
 
           const SizedBox(height: 12),
@@ -250,14 +282,28 @@ class _InfoBar extends StatelessWidget {
   }
 }
 
-class _ErrorCard extends StatelessWidget {
+class _ErrorCard extends StatefulWidget {
   const _ErrorCard({required this.message, required this.onRetry});
 
   final String message;
   final VoidCallback? onRetry;
 
   @override
+  State<_ErrorCard> createState() => _ErrorCardState();
+}
+
+class _ErrorCardState extends State<_ErrorCard> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
+    final msg = widget.message;
+    final previewLen = 220;
+    final canExpand = msg.length > previewLen;
+    final shown = (!_expanded && canExpand)
+        ? '${msg.substring(0, previewLen)}…'
+        : msg;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -266,11 +312,32 @@ class _ErrorCard extends StatelessWidget {
           children: [
             const Text('Error', style: TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
-            Text(message, style: const TextStyle(color: Colors.red)),
-            const SizedBox(height: 12),
+            SelectableText(shown, style: const TextStyle(color: Colors.red)),
+            if (canExpand) ...[
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => setState(() => _expanded = !_expanded),
+                child: Text(_expanded ? 'Show less' : 'Show more'),
+              ),
+            ],
+            const SizedBox(height: 8),
             Row(
               children: [
-                OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
+                OutlinedButton(
+                  onPressed: widget.onRetry,
+                  child: const Text('Retry'),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton(
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: msg));
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Error copied')),
+                    );
+                  },
+                  child: const Text('Copy error'),
+                ),
               ],
             ),
           ],

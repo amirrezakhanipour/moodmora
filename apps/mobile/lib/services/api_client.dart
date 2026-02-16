@@ -1,54 +1,105 @@
+import 'dart:async';
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 
 class ApiClient {
-  ApiClient({required this.baseUrl, http.Client? client})
-    : _client = client ?? http.Client();
+  ApiClient({required this.baseUrl, http.Client? client, Duration? timeout})
+    : _client = client ?? http.Client(),
+      _timeout = timeout ?? const Duration(seconds: 5);
 
   final String baseUrl;
   final http.Client _client;
+  final Duration _timeout;
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
 
   Future<Map<String, dynamic>> getJson(String path) async {
-    final res = await _client.get(_uri(path));
-    return _handle(res, path);
+    final uri = _uri(path);
+    try {
+      final res = await _client.get(uri).timeout(_timeout);
+      return _handle(res, method: 'GET', path: path);
+    } on TimeoutException catch (e) {
+      throw ApiException(
+        message: 'Timeout after ${_timeout.inSeconds}s',
+        statusCode: 0,
+        path: 'GET $path',
+        rawBody: e.toString(),
+      );
+    }
   }
 
   Future<Map<String, dynamic>> postJson(
     String path, {
     required Map<String, dynamic> body,
   }) async {
-    final res = await _client.post(
-      _uri(path),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(body),
-    );
-    return _handle(res, path);
+    final uri = _uri(path);
+    try {
+      final res = await _client
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
+
+      return _handle(res, method: 'POST', path: path);
+    } on TimeoutException catch (e) {
+      throw ApiException(
+        message: 'Timeout after ${_timeout.inSeconds}s',
+        statusCode: 0,
+        path: 'POST $path',
+        rawBody: e.toString(),
+      );
+    }
   }
 
-  Map<String, dynamic> _handle(http.Response res, String path) {
+  Map<String, dynamic> _handle(
+    http.Response res, {
+    required String method,
+    required String path,
+  }) {
+    // Always keep raw body for debugging
+    final raw = res.body;
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw ApiException(
+        message: 'HTTP ${res.statusCode} for $method $path',
+        statusCode: res.statusCode,
+        path: '$method $path',
+        rawBody: raw,
+      );
+    }
+
     final contentType = res.headers['content-type'] ?? '';
     if (!contentType.contains('application/json')) {
       throw ApiException(
         message: 'Expected JSON but got: $contentType',
         statusCode: res.statusCode,
-        path: path,
-        rawBody: res.body,
+        path: '$method $path',
+        rawBody: raw,
       );
     }
 
-    final decoded = jsonDecode(res.body);
-    if (decoded is! Map<String, dynamic>) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        throw ApiException(
+          message: 'Expected JSON object envelope',
+          statusCode: res.statusCode,
+          path: '$method $path',
+          rawBody: raw,
+        );
+      }
+      return decoded;
+    } catch (e) {
       throw ApiException(
-        message: 'Expected JSON object envelope',
+        message: 'JSON decode failed',
         statusCode: res.statusCode,
-        path: path,
-        rawBody: res.body,
+        path: '$method $path',
+        rawBody: raw,
       );
     }
-
-    return decoded;
   }
 }
 

@@ -20,3 +20,4 @@ dist/
 .vscode/
 .idea/
 *.iml
+apps/mobile/host/

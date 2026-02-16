@@ -22,6 +22,20 @@ class _ImproveScreenState extends State<ImproveScreen> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      // UX: when user edits input, clear stale result/error
+      if (_result != null || _error != null) {
+        setState(() {
+          _result = null;
+          _error = null;
+        });
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
@@ -84,11 +98,15 @@ class _ImproveScreenState extends State<ImproveScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _InfoBar(text: 'API: ${AppConfig.apiBaseUrl}'),
+          const SizedBox(height: 12),
+
           const Text(
             'Paste your draft message',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
+
           TextField(
             controller: _controller,
             maxLines: 6,
@@ -96,9 +114,11 @@ class _ImproveScreenState extends State<ImproveScreen> {
               border: OutlineInputBorder(),
               hintText: 'Write your message here...',
             ),
-            onChanged: (_) => setState(() {}),
+            onChanged: (_) => setState(() {}), // <-- مهم: enable/disable button
           ),
+
           const SizedBox(height: 12),
+
           Row(
             children: [
               Expanded(
@@ -133,7 +153,9 @@ class _ImproveScreenState extends State<ImproveScreen> {
               ),
             ],
           ),
+
           const SizedBox(height: 12),
+
           FilledButton(
             onPressed: _canSubmit ? _submit : null,
             child: _loading
@@ -144,11 +166,14 @@ class _ImproveScreenState extends State<ImproveScreen> {
                   )
                 : const Text('Improve'),
           ),
-          const SizedBox(height: 16),
+
+          const SizedBox(height: 12),
+
           if (_error != null) ...[
-            Text(_error!, style: const TextStyle(color: Colors.red)),
+            _ErrorCard(message: _error!, onRetry: _canSubmit ? _submit : null),
             const SizedBox(height: 12),
           ],
+
           if (_result != null) ...[
             _RiskCard(
               level: _result!.risk.level,
@@ -199,6 +224,57 @@ class _ImproveScreenState extends State<ImproveScreen> {
             ],
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _InfoBar extends StatelessWidget {
+  const _InfoBar({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+    );
+  }
+}
+
+class _ErrorCard extends StatelessWidget {
+  const _ErrorCard({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Error', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(message, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

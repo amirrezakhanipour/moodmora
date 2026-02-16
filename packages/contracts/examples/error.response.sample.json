@@ -1,0 +1,16 @@
+{
+  "status": "error",
+  "request_id": "req_demo_err_0001",
+  "timestamp_ms": 1730000000000,
+  "data": null,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "input.draft_text is required",
+    "details": {
+      "path": "input.draft_text"
+    }
+  },
+  "meta": {
+    "contract_version": "1.0.0"
+  }
+}

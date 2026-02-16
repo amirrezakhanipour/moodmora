@@ -1,0 +1,38 @@
+{
+  "status": "ok",
+  "request_id": "req_demo_0002",
+  "timestamp_ms": 1730000000000,
+  "data": {
+    "mode": "REPLY",
+    "voice_match_score": 79,
+    "risk": {
+      "level": "yellow",
+      "score": 42,
+      "reasons": ["They feel stressed", "Boundary request is clear"]
+    },
+    "suggestions": [
+      {
+        "label": "Accountable",
+        "text": "حق داری. cancel کردنِ last minute درست نبود. از این به بعد اگه احتمال تغییر باشه زودتر بهت می‌گم تا stress نگیری.",
+        "why_it_works": "Validates their feeling and commits to a concrete change.",
+        "emotion_preview": ["validated", "safe"]
+      },
+      {
+        "label": "Short",
+        "text": "حق داری. از این به بعد زودتر خبر می‌دم 🙏",
+        "why_it_works": "Simple + direct.",
+        "emotion_preview": ["calm"]
+      },
+      {
+        "label": "Collaborative",
+        "text": "کاملاً می‌فهمم. دوست دارم یه rule بذاریم: اگه تا فلان ساعت قطعی نبودم، همون موقع بهت بگم که تو هم برنامه‌ریزی کنی. ok-e؟",
+        "why_it_works": "Turns it into a shared plan.",
+        "emotion_preview": ["teamwork"]
+      }
+    ]
+  },
+  "error": null,
+  "meta": {
+    "contract_version": "1.0.0"
+  }
+}

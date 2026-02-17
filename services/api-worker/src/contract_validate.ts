@@ -1,5 +1,5 @@
 // services/api-worker/src/contract_validate.ts
-import Ajv from "ajv";
+import Ajv, { type ValidateFunction } from "ajv";
 
 type ValidateResult =
   | { ok: true }
@@ -16,7 +16,7 @@ function isNodeRuntime(): boolean {
 let cached:
   | {
       ajv: Ajv;
-      validateEnvelope: (data: unknown) => boolean;
+      validateEnvelope: ValidateFunction;
       envelopeId: string;
     }
   | null = null;
@@ -108,7 +108,7 @@ async function bootAjv(): Promise<NonNullable<typeof cached> | null> {
   }
 
   const envelopeId = "moodmora://schemas/envelope.schema.json";
-  const validateEnvelope = ajv.getSchema(envelopeId);
+  const validateEnvelope = ajv.getSchema(envelopeId) as ValidateFunction | undefined;
   if (!validateEnvelope) {
     throw new Error(
       `CONTRACT_BOOT_ERROR: could not find schema ${envelopeId}. Check $id in packages/contracts/schemas/envelope.schema.json`

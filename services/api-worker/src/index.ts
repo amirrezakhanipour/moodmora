@@ -2,6 +2,7 @@
 import { groqChatCompletion, type GroqMessage } from "./groq";
 import { buildMessages } from "./prompt_builder";
 import { parseAndValidateLlmOutput } from "./llm_output";
+import { validateEnvelopeContract } from "./contract_validate";
 import type { Suggestion } from "./types";
 
 type Status = "ok" | "blocked" | "error";
@@ -22,7 +23,33 @@ type WorkerEnv = {
   LLM_TIMEOUT_MS?: string;
 };
 
-function jsonResponse(body: unknown, status = 200): Response {
+function strictContractsEnabled(): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const p = (globalThis as any).process;
+  const v = (p?.env?.MOODMORA_STRICT_CONTRACTS ?? "").toString().trim();
+  return v === "1" || v.toLowerCase() === "true";
+}
+
+async function jsonResponse(body: unknown, status = 200): Promise<Response> {
+  try {
+    const vr = await validateEnvelopeContract(body);
+    if (!vr.ok) {
+      const msg = `CONTRACT_VIOLATION: schema=${vr.schema_id} errors=${JSON.stringify(vr.errors)}`;
+      if (strictContractsEnabled()) {
+        throw new Error(msg);
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(msg);
+      }
+    }
+  } catch (e: any) {
+    // If validator itself fails (path/env quirks), don't break runtime unless strict is enabled.
+    const msg = `CONTRACT_VALIDATOR_ERROR: ${String(e?.message ?? e)}`;
+    if (strictContractsEnabled()) throw new Error(msg);
+    // eslint-disable-next-line no-console
+    console.warn(msg);
+  }
+
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -230,7 +257,7 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/health") {
-      return jsonResponse(
+      return await jsonResponse(
         ok(
           { service: "api-worker", ok: true },
           {
@@ -247,12 +274,12 @@ export default {
       try {
         body = await readJson(request);
       } catch {
-        return jsonResponse(err("VALIDATION_ERROR", "Invalid JSON body"), 400);
+        return await jsonResponse(err("VALIDATION_ERROR", "Invalid JSON body"), 400);
       }
 
       const draftText = body?.input?.draft_text;
       if (typeof draftText !== "string" || draftText.trim().length === 0) {
-        return jsonResponse(err("VALIDATION_ERROR", "input.draft_text is required", { path: "input.draft_text" }), 400);
+        return await jsonResponse(err("VALIDATION_ERROR", "input.draft_text is required", { path: "input.draft_text" }), 400);
       }
 
       const hardMode = Boolean(body?.input?.hard_mode);
@@ -267,7 +294,7 @@ export default {
           inputText: draftText,
         });
 
-        return jsonResponse(
+        return await jsonResponse(
           ok(
             {
               mode: "IMPROVE",
@@ -289,7 +316,7 @@ export default {
         );
       } catch (e: any) {
         const suggestions = makeMockSuggestions(clampSuggestionCount(hardMode), variant);
-        return jsonResponse(
+        return await jsonResponse(
           ok(
             {
               mode: "IMPROVE",
@@ -313,12 +340,12 @@ export default {
       try {
         body = await readJson(request);
       } catch {
-        return jsonResponse(err("VALIDATION_ERROR", "Invalid JSON body"), 400);
+        return await jsonResponse(err("VALIDATION_ERROR", "Invalid JSON body"), 400);
       }
 
       const receivedText = body?.input?.received_text;
       if (typeof receivedText !== "string" || receivedText.trim().length === 0) {
-        return jsonResponse(err("VALIDATION_ERROR", "input.received_text is required", { path: "input.received_text" }), 400);
+        return await jsonResponse(err("VALIDATION_ERROR", "input.received_text is required", { path: "input.received_text" }), 400);
       }
 
       const hardMode = Boolean(body?.input?.hard_mode);
@@ -333,7 +360,7 @@ export default {
           inputText: receivedText,
         });
 
-        return jsonResponse(
+        return await jsonResponse(
           ok(
             {
               mode: "REPLY",
@@ -355,7 +382,7 @@ export default {
         );
       } catch (e: any) {
         const suggestions = makeMockSuggestions(clampSuggestionCount(hardMode), variant);
-        return jsonResponse(
+        return await jsonResponse(
           ok(
             {
               mode: "REPLY",
@@ -374,6 +401,6 @@ export default {
       }
     }
 
-    return jsonResponse(err("NOT_FOUND", "Route not found", { path: url.pathname }), 404);
+    return await jsonResponse(err("NOT_FOUND", "Route not found", { path: url.pathname }), 404);
   },
 };

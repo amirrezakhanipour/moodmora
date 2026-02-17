@@ -1,5 +1,6 @@
 // services/api-worker/src/index.ts
-import { groqChatCompletion, type GroqMessage } from "./groq";
+import { groqChatCompletion } from "./groq";
+import { buildMessages } from "./prompt_builder";
 
 type Status = "ok" | "blocked" | "error";
 
@@ -131,42 +132,12 @@ async function generateSuggestionsWithGroq(args: {
 
   const count = clampSuggestionCount(args.hardMode);
 
-  const languageHint =
-    args.variant === "FINGLISH"
-      ? "Write the suggested messages in Finglish (Persian written with Latin letters)."
-      : args.variant === "FA_SCRIPT"
-      ? "Write the suggested messages in Persian script (Farsi)."
-      : args.variant === "EN"
-      ? "Write the suggested messages in English."
-      : "Auto-detect: if the input text is Persian, answer in Persian; otherwise English. If Persian, prefer Finglish.";
-
-  const system = [
-    "You are MoodMora, an assistant that drafts emotionally intelligent, low-conflict messages.",
-    "Return ONLY valid JSON (no markdown, no code fences).",
-    `You must return exactly ${count} suggestions.`,
-    languageHint,
-    "Schema:",
-    `{
-      "suggestions": [
-        {
-          "label": "short label",
-          "text": "the message to send",
-          "why_it_works": "1 sentence",
-          "emotion_preview": ["calm" | "warm" | "confident" | "friendly" | "neutral"]
-        }
-      ]
-    }`,
-  ].join("\n");
-
-  const user: string =
-    args.mode === "IMPROVE"
-      ? `Rewrite/Improve this draft message:\n\n${args.inputText}`
-      : `Write a reply to this received message:\n\n${args.inputText}`;
-
-  const messages: GroqMessage[] = [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ];
+  const messages = buildMessages({
+    mode: args.mode,
+    inputText: args.inputText,
+    suggestionCount: count,
+    outputVariant: args.variant,
+  });
 
   const t0 = nowMs();
   const { content, usage } = await groqChatCompletion({

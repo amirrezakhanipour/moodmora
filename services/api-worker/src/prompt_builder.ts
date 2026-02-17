@@ -13,7 +13,7 @@ export type PromptBuildArgs = {
 export function buildMessages(args: PromptBuildArgs): GroqMessage[] {
   const languageHint =
     args.outputVariant === "FINGLISH"
-      ? "Write the suggested messages in Finglish (Persian written with Latin letters)."
+      ? "Write the suggested messages in Finglish (Persian written with Latin letters). Do NOT use Persian script."
       : args.outputVariant === "FA_SCRIPT"
       ? "Write the suggested messages in Persian script (Farsi)."
       : args.outputVariant === "EN"
@@ -22,10 +22,14 @@ export function buildMessages(args: PromptBuildArgs): GroqMessage[] {
 
   const system = [
     "You are MoodMora, an assistant that drafts emotionally intelligent, low-conflict messages.",
-    "Return ONLY valid JSON (no markdown, no code fences).",
-    `You must return exactly ${args.suggestionCount} suggestions.`,
+    "IMPORTANT OUTPUT RULES:",
+    "- Return ONLY one valid JSON object.",
+    "- No markdown, no code fences, no extra commentary.",
+    `- You must return exactly ${args.suggestionCount} suggestions.`,
+    "- Keep the messages short, calm, and low-pressure.",
     languageHint,
-    "Schema:",
+    "",
+    "JSON Schema (shape):",
     `{
       "suggestions": [
         {

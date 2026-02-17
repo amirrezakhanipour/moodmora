@@ -6,6 +6,10 @@ export type GroqMessage = {
   content: string;
 };
 
+export type GroqResponseFormat =
+  | { type: "json_object" }
+  | { type: "json_schema"; json_schema: { name: string; schema: unknown; strict?: boolean } };
+
 export type GroqChatOptions = {
   apiKey: string;
   model: string;
@@ -13,6 +17,7 @@ export type GroqChatOptions = {
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
+  responseFormat?: GroqResponseFormat;
 };
 
 type GroqChatResponse = {
@@ -45,18 +50,25 @@ export async function groqChatCompletion(opts: GroqChatOptions): Promise<{
   const timeoutMs = Math.max(1000, opts.timeoutMs ?? 20000);
   const { signal } = withTimeout(timeoutMs);
 
+  const body: Record<string, unknown> = {
+    model: opts.model,
+    messages: opts.messages,
+    temperature: opts.temperature ?? 0.4,
+    max_tokens: opts.maxTokens ?? 700,
+  };
+
+  // OpenAI-compatible response_format supported by Groq
+  if (opts.responseFormat) {
+    body.response_format = opts.responseFormat;
+  }
+
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${opts.apiKey}`,
     },
-    body: JSON.stringify({
-      model: opts.model,
-      messages: opts.messages,
-      temperature: opts.temperature ?? 0.4,
-      max_tokens: opts.maxTokens ?? 700,
-    }),
+    body: JSON.stringify(body),
     signal,
   });
 

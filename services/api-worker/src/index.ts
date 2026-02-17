@@ -1,6 +1,8 @@
 // services/api-worker/src/index.ts
-import { groqChatCompletion } from "./groq";
+import { groqChatCompletion, type GroqMessage } from "./groq";
 import { buildMessages } from "./prompt_builder";
+import { parseAndValidateLlmOutput } from "./llm_output";
+import type { Suggestion } from "./types";
 
 type Status = "ok" | "blocked" | "error";
 
@@ -11,13 +13,6 @@ type Envelope = {
   data: Record<string, unknown> | null;
   error: { code: string; message: string; details?: Record<string, unknown> | null } | null;
   meta: { contract_version: "1.0.0" } & Record<string, unknown>;
-};
-
-type Suggestion = {
-  label: string;
-  text: string;
-  why_it_works: string;
-  emotion_preview: string[];
 };
 
 type WorkerEnv = {
@@ -73,14 +68,14 @@ async function readJson(request: Request): Promise<unknown> {
   return JSON.parse(txt);
 }
 
-// --- MOCK fallback (ta vaghti parse/repair va structured outputs ro nayavordim) ---
+// --- MOCK fallback ---
 function makeMockSuggestions(count: number, variant: string | undefined) {
   const isFinglish = variant === "FINGLISH";
   const base = isFinglish
     ? {
         s1: "Hey, man mikhastam ye chizi ro clear konam. tone-am diruz ok نبود، sorry.",
         s2: "Mifahmam ke in barat sakht bood. mikhay ye vaght koochik gap bezanim?",
-        s3: "Hag dari. az in be bad say mikonam zودتر coordination konam.",
+        s3: "Hag dari. az in be bad say mikonam zoodtar coordination konam.",
       }
     : {
         s1: "Hey, I wanted to clear something up. My tone wasn’t great—sorry.",
@@ -118,71 +113,122 @@ function promptVersion(env: WorkerEnv): string {
   return env?.PROMPT_VERSION?.trim() || "3.2.0";
 }
 
+function normalizeSuggestions(suggestions: Suggestion[]): Suggestion[] {
+  return suggestions.map((s, i) => ({
+    label: (s?.label ?? "").toString().trim() || `Option ${i + 1}`,
+    text: (s?.text ?? "").toString(),
+    why_it_works: (s?.why_it_works ?? "Clear, respectful, and low pressure.").toString(),
+    emotion_preview: Array.isArray(s?.emotion_preview) ? s.emotion_preview.map(String).slice(0, 3) : ["calm"],
+  }));
+}
+
+function ensureNonEmptyText(suggestions: Suggestion[]) {
+  if (suggestions.some((x) => !x.text || !x.text.trim())) throw new Error("LLM_EMPTY_TEXT");
+}
+
+function addStrictJsonReminder(messages: GroqMessage[], count: number): GroqMessage[] {
+  const reminder: GroqMessage = {
+    role: "system",
+    content: [
+      "REMINDER:",
+      "Return ONLY a single JSON object and nothing else.",
+      `It must contain exactly ${count} suggestions.`,
+      "No extra keys. No markdown. No commentary.",
+    ].join("\n"),
+  };
+  return [...messages, reminder];
+}
+
 async function generateSuggestionsWithGroq(args: {
   env: WorkerEnv;
   mode: "IMPROVE" | "REPLY";
   variant?: string;
   hardMode: boolean;
   inputText: string;
-}): Promise<{ suggestions: Suggestion[]; usage: unknown }> {
+}): Promise<{
+  suggestions: Suggestion[];
+  usage: unknown;
+  parse_ok: boolean;
+  schema_ok: boolean;
+  extracted_from_raw: boolean;
+  repair_attempted: boolean;
+}> {
   const apiKey = args.env.GROQ_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error("MISSING_GROQ_API_KEY");
-  }
+  if (!apiKey) throw new Error("MISSING_GROQ_API_KEY");
 
   const count = clampSuggestionCount(args.hardMode);
 
-  const messages = buildMessages({
+  const baseMessages = buildMessages({
     mode: args.mode,
     inputText: args.inputText,
     suggestionCount: count,
     outputVariant: args.variant,
   });
 
+  // Attempt #1 (JSON mode)
   const t0 = nowMs();
-  const { content, usage } = await groqChatCompletion({
+  const first = await groqChatCompletion({
     apiKey,
     model: modelForEnv(args.env),
-    messages,
+    messages: baseMessages,
     temperature: 0.4,
     maxTokens: 700,
     timeoutMs: timeoutMsForEnv(args.env),
+    responseFormat: { type: "json_object" },
   });
-  const latencyMs = nowMs() - t0;
+  const latency1 = nowMs() - t0;
 
-  // Best-effort parse (Step 3.6 repair comes later)
-  let parsed: any;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    throw new Error(`GROQ_BAD_JSON: ${content.slice(0, 200)}`);
+  const r1 = parseAndValidateLlmOutput(first.content, count);
+  if (r1.ok) {
+    const normalized = normalizeSuggestions(r1.parsed.suggestions);
+    ensureNonEmptyText(normalized);
+    return {
+      suggestions: normalized,
+      usage: { ...(first.usage as any), latency_ms: latency1 },
+      parse_ok: true,
+      schema_ok: true,
+      extracted_from_raw: r1.extracted_from_raw,
+      repair_attempted: false,
+    };
   }
 
-  const suggestions = Array.isArray(parsed?.suggestions) ? (parsed.suggestions as any[]) : [];
-  if (suggestions.length !== count) {
-    throw new Error(`GROQ_BAD_SHAPE: expected ${count} suggestions, got ${suggestions.length}`);
+  // Attempt #2 (repair)
+  const t1 = nowMs();
+  const second = await groqChatCompletion({
+    apiKey,
+    model: modelForEnv(args.env),
+    messages: addStrictJsonReminder(baseMessages, count),
+    temperature: 0.2,
+    maxTokens: 700,
+    timeoutMs: timeoutMsForEnv(args.env),
+    responseFormat: { type: "json_object" },
+  });
+  const latency2 = nowMs() - t1;
+
+  const r2 = parseAndValidateLlmOutput(second.content, count);
+  if (!r2.ok) {
+    throw new Error(
+      `LLM_OUTPUT_INVALID: ${r2.error} extracted=${r2.extracted_from_raw} preview=${(r2.raw_preview ?? "").toString()}`
+    );
   }
 
-  const normalized: Suggestion[] = suggestions.map((s, i) => ({
-    label: typeof s?.label === "string" ? s.label : `Option ${i + 1}`,
-    text: typeof s?.text === "string" ? s.text : "",
-    why_it_works: typeof s?.why_it_works === "string" ? s.why_it_works : "Clear, respectful, and low pressure.",
-    emotion_preview: Array.isArray(s?.emotion_preview) ? s.emotion_preview.map(String).slice(0, 3) : ["calm"],
-  }));
+  const normalized = normalizeSuggestions(r2.parsed.suggestions);
+  ensureNonEmptyText(normalized);
 
-  // quick sanity
-  if (normalized.some((x) => !x.text.trim())) {
-    throw new Error("GROQ_EMPTY_TEXT");
-  }
-
-  return { suggestions: normalized, usage: { ...(usage as any), latency_ms: latencyMs } };
+  return {
+    suggestions: normalized,
+    usage: { ...(second.usage as any), latency_ms: latency2 },
+    parse_ok: true,
+    schema_ok: true,
+    extracted_from_raw: r2.extracted_from_raw,
+    repair_attempted: true,
+  };
 }
 
 export default {
   async fetch(request: Request, env: WorkerEnv = {} as WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
 
-    // GET /health
     if (request.method === "GET" && url.pathname === "/health") {
       return jsonResponse(
         ok(
@@ -196,7 +242,6 @@ export default {
       );
     }
 
-    // POST /v1/improve
     if (request.method === "POST" && url.pathname === "/v1/improve") {
       let body: any;
       try {
@@ -214,7 +259,7 @@ export default {
       const variant = body?.input?.output_variant as string | undefined;
 
       try {
-        const { suggestions, usage } = await generateSuggestionsWithGroq({
+        const out = await generateSuggestionsWithGroq({
           env,
           mode: "IMPROVE",
           variant,
@@ -226,20 +271,23 @@ export default {
           ok(
             {
               mode: "IMPROVE",
-              voice_match_score: 80, // mock for now (Phase 5)
-              risk: { level: "green", score: 20, reasons: ["Mock risk: low"] }, // real in Phase 4
-              suggestions,
+              voice_match_score: 80,
+              risk: { level: "green", score: 20, reasons: ["Mock risk: low"] },
+              suggestions: out.suggestions,
             },
             {
               model: modelForEnv(env),
               prompt_version: promptVersion(env),
-              usage,
+              usage: out.usage,
+              parse_ok: out.parse_ok,
+              schema_ok: out.schema_ok,
+              extracted_from_raw: out.extracted_from_raw,
+              repair_attempted: out.repair_attempted,
             }
           ),
           200
         );
       } catch (e: any) {
-        // fallback to mock so app doesn't break while we iterate
         const suggestions = makeMockSuggestions(clampSuggestionCount(hardMode), variant);
         return jsonResponse(
           ok(
@@ -260,7 +308,6 @@ export default {
       }
     }
 
-    // POST /v1/reply
     if (request.method === "POST" && url.pathname === "/v1/reply") {
       let body: any;
       try {
@@ -278,7 +325,7 @@ export default {
       const variant = body?.input?.output_variant as string | undefined;
 
       try {
-        const { suggestions, usage } = await generateSuggestionsWithGroq({
+        const out = await generateSuggestionsWithGroq({
           env,
           mode: "REPLY",
           variant,
@@ -292,12 +339,16 @@ export default {
               mode: "REPLY",
               voice_match_score: 78,
               risk: { level: "yellow", score: 45, reasons: ["Mock risk: medium (receiver stressed)"] },
-              suggestions,
+              suggestions: out.suggestions,
             },
             {
               model: modelForEnv(env),
               prompt_version: promptVersion(env),
-              usage,
+              usage: out.usage,
+              parse_ok: out.parse_ok,
+              schema_ok: out.schema_ok,
+              extracted_from_raw: out.extracted_from_raw,
+              repair_attempted: out.repair_attempted,
             }
           ),
           200

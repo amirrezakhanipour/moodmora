@@ -72,12 +72,12 @@ async function readJson(request: Request): Promise<unknown> {
   return JSON.parse(txt);
 }
 
-// --- MOCK fallback (ta vaghti structured outputs + repair ro nayavordim) ---
+// --- MOCK fallback (ta vaghti parse/repair va structured outputs ro nayavordim) ---
 function makeMockSuggestions(count: number, variant: string | undefined) {
   const isFinglish = variant === "FINGLISH";
   const base = isFinglish
     ? {
-        s1: "Hey, man mikhastam ye chizi ro clear konam. tone-am diruz ok nabood, sorry.",
+        s1: "Hey, man mikhastam ye chizi ro clear konam. tone-am diruz ok نبود، sorry.",
         s2: "Mifahmam ke in barat sakht bood. mikhay ye vaght koochik gap bezanim?",
         s3: "Hag dari. az in be bad say mikonam zودتر coordination konam.",
       }
@@ -103,18 +103,18 @@ function clampSuggestionCount(hardMode: boolean): number {
 }
 
 function modelForEnv(env: WorkerEnv): string {
-  return env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile";
+  return env?.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile";
 }
 
 function timeoutMsForEnv(env: WorkerEnv): number {
-  const raw = env.LLM_TIMEOUT_MS?.trim();
+  const raw = env?.LLM_TIMEOUT_MS?.trim();
   const n = raw ? Number(raw) : 20000;
   if (!Number.isFinite(n) || n <= 0) return 20000;
   return Math.min(Math.max(1000, n), 60000);
 }
 
 function promptVersion(env: WorkerEnv): string {
-  return env.PROMPT_VERSION?.trim() || "3.2.0";
+  return env?.PROMPT_VERSION?.trim() || "3.2.0";
 }
 
 async function generateSuggestionsWithGroq(args: {
@@ -125,7 +125,9 @@ async function generateSuggestionsWithGroq(args: {
   inputText: string;
 }): Promise<{ suggestions: Suggestion[]; usage: unknown }> {
   const apiKey = args.env.GROQ_API_KEY?.trim();
-  if (!apiKey) throw new Error("MISSING_GROQ_API_KEY");
+  if (!apiKey) {
+    throw new Error("MISSING_GROQ_API_KEY");
+  }
 
   const count = clampSuggestionCount(args.hardMode);
 
@@ -156,7 +158,7 @@ async function generateSuggestionsWithGroq(args: {
     }`,
   ].join("\n");
 
-  const user =
+  const user: string =
     args.mode === "IMPROVE"
       ? `Rewrite/Improve this draft message:\n\n${args.inputText}`
       : `Write a reply to this received message:\n\n${args.inputText}`;
@@ -177,11 +179,12 @@ async function generateSuggestionsWithGroq(args: {
   });
   const latencyMs = nowMs() - t0;
 
+  // Best-effort parse (Step 3.6 repair comes later)
   let parsed: any;
   try {
     parsed = JSON.parse(content);
   } catch {
-    throw new Error(`GROQ_BAD_JSON: ${String(content).slice(0, 200)}`);
+    throw new Error(`GROQ_BAD_JSON: ${content.slice(0, 200)}`);
   }
 
   const suggestions = Array.isArray(parsed?.suggestions) ? (parsed.suggestions as any[]) : [];
@@ -196,25 +199,33 @@ async function generateSuggestionsWithGroq(args: {
     emotion_preview: Array.isArray(s?.emotion_preview) ? s.emotion_preview.map(String).slice(0, 3) : ["calm"],
   }));
 
-  if (normalized.some((x) => !x.text.trim())) throw new Error("GROQ_EMPTY_TEXT");
+  // quick sanity
+  if (normalized.some((x) => !x.text.trim())) {
+    throw new Error("GROQ_EMPTY_TEXT");
+  }
 
   return { suggestions: normalized, usage: { ...(usage as any), latency_ms: latencyMs } };
 }
 
 export default {
-  async fetch(request: Request, env: WorkerEnv): Promise<Response> {
+  async fetch(request: Request, env: WorkerEnv = {} as WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
 
+    // GET /health
     if (request.method === "GET" && url.pathname === "/health") {
       return jsonResponse(
         ok(
           { service: "api-worker", ok: true },
-          { prompt_version: promptVersion(env), model: modelForEnv(env) }
+          {
+            prompt_version: promptVersion(env),
+            model: modelForEnv(env),
+          }
         ),
         200
       );
     }
 
+    // POST /v1/improve
     if (request.method === "POST" && url.pathname === "/v1/improve") {
       let body: any;
       try {
@@ -244,15 +255,20 @@ export default {
           ok(
             {
               mode: "IMPROVE",
-              voice_match_score: 80,
-              risk: { level: "green", score: 20, reasons: ["Mock risk: low"] },
+              voice_match_score: 80, // mock for now (Phase 5)
+              risk: { level: "green", score: 20, reasons: ["Mock risk: low"] }, // real in Phase 4
               suggestions,
             },
-            { model: modelForEnv(env), prompt_version: promptVersion(env), usage }
+            {
+              model: modelForEnv(env),
+              prompt_version: promptVersion(env),
+              usage,
+            }
           ),
           200
         );
       } catch (e: any) {
+        // fallback to mock so app doesn't break while we iterate
         const suggestions = makeMockSuggestions(clampSuggestionCount(hardMode), variant);
         return jsonResponse(
           ok(
@@ -262,13 +278,18 @@ export default {
               risk: { level: "yellow", score: 35, reasons: ["LLM failed; served mock suggestions"] },
               suggestions,
             },
-            { model: modelForEnv(env), prompt_version: promptVersion(env), llm_error: String(e?.message ?? e) }
+            {
+              model: modelForEnv(env),
+              prompt_version: promptVersion(env),
+              llm_error: String(e?.message ?? e),
+            }
           ),
           200
         );
       }
     }
 
+    // POST /v1/reply
     if (request.method === "POST" && url.pathname === "/v1/reply") {
       let body: any;
       try {
@@ -302,7 +323,11 @@ export default {
               risk: { level: "yellow", score: 45, reasons: ["Mock risk: medium (receiver stressed)"] },
               suggestions,
             },
-            { model: modelForEnv(env), prompt_version: promptVersion(env), usage }
+            {
+              model: modelForEnv(env),
+              prompt_version: promptVersion(env),
+              usage,
+            }
           ),
           200
         );
@@ -316,7 +341,11 @@ export default {
               risk: { level: "yellow", score: 55, reasons: ["LLM failed; served mock suggestions"] },
               suggestions,
             },
-            { model: modelForEnv(env), prompt_version: promptVersion(env), llm_error: String(e?.message ?? e) }
+            {
+              model: modelForEnv(env),
+              prompt_version: promptVersion(env),
+              llm_error: String(e?.message ?? e),
+            }
           ),
           200
         );

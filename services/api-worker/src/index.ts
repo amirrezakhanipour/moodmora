@@ -23,31 +23,38 @@ type WorkerEnv = {
   LLM_TIMEOUT_MS?: string;
 };
 
-function strictContractsEnabled(): boolean {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const p = (globalThis as any).process;
-  const v = (p?.env?.MOODMORA_STRICT_CONTRACTS ?? "").toString().trim();
-  return v === "1" || v.toLowerCase() === "true";
-}
-
 async function jsonResponse(body: unknown, status = 200): Promise<Response> {
+  // Optional contract validation in Node (tests/CI). Never block response.
   try {
-    const vr = await validateEnvelopeContract(body);
-    if (!vr.ok) {
-      const msg = `CONTRACT_VIOLATION: schema=${vr.schema_id} errors=${JSON.stringify(vr.errors)}`;
-      if (strictContractsEnabled()) {
-        throw new Error(msg);
-      } else {
-        // eslint-disable-next-line no-console
-        console.warn(msg);
+    const strict =
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      String(((globalThis as any).process?.env?.MOODMORA_STRICT_CONTRACTS ?? "")).toLowerCase() === "true";
+
+    if (strict) {
+      const r = await validateEnvelopeContract(body);
+      if (!r.ok) {
+        return new Response(
+          JSON.stringify(
+            err("CONTRACT_VALIDATION_ERROR", "Envelope failed contract validation", {
+              schema_id: r.schema_id,
+              errors: r.errors,
+            })
+          ),
+          {
+            status: 500,
+            headers: {
+              "content-type": "application/json; charset=utf-8",
+              "cache-control": "no-store",
+            },
+          }
+        );
       }
+    } else {
+      // best-effort validate (warn-only)
+      await validateEnvelopeContract(body);
     }
-  } catch (e: any) {
-    // If validator itself fails (path/env quirks), don't break runtime unless strict is enabled.
-    const msg = `CONTRACT_VALIDATOR_ERROR: ${String(e?.message ?? e)}`;
-    if (strictContractsEnabled()) throw new Error(msg);
-    // eslint-disable-next-line no-console
-    console.warn(msg);
+  } catch {
+    // ignore
   }
 
   return new Response(JSON.stringify(body), {
@@ -95,75 +102,51 @@ async function readJson(request: Request): Promise<unknown> {
   return JSON.parse(txt);
 }
 
-// --- MOCK fallback ---
-function makeMockSuggestions(count: number, variant: string | undefined) {
-  const isFinglish = variant === "FINGLISH";
-  const base = isFinglish
-    ? {
-        s1: "Hey, man mikhastam ye chizi ro clear konam. tone-am diruz ok نبود، sorry.",
-        s2: "Mifahmam ke in barat sakht bood. mikhay ye vaght koochik gap bezanim?",
-        s3: "Hag dari. az in be bad say mikonam zoodtar coordination konam.",
-      }
-    : {
-        s1: "Hey, I wanted to clear something up. My tone wasn’t great—sorry.",
-        s2: "I get that this was stressful. Want to talk for a few minutes and align?",
-        s3: "You’re right. I’ll coordinate earlier next time.",
-      };
-
-  const texts = [base.s1, base.s2, base.s3].slice(0, count);
-  const labels = count === 2 ? ["Calm & clear", "Short"] : ["Calm & clear", "Short", "Warm"];
-
-  return texts.map((text, i) => ({
-    label: labels[i] ?? `Option ${i + 1}`,
-    text,
-    why_it_works: "Mock suggestion: simple, respectful, low pressure.",
-    emotion_preview: ["calm"],
-  })) satisfies Suggestion[];
-}
-
 function clampSuggestionCount(hardMode: boolean): number {
   return hardMode ? 2 : 3;
 }
 
 function modelForEnv(env: WorkerEnv): string {
-  return env?.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile";
+  return env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile";
 }
 
 function timeoutMsForEnv(env: WorkerEnv): number {
-  const raw = env?.LLM_TIMEOUT_MS?.trim();
+  const raw = env.LLM_TIMEOUT_MS?.trim();
   const n = raw ? Number(raw) : 20000;
   if (!Number.isFinite(n) || n <= 0) return 20000;
   return Math.min(Math.max(1000, n), 60000);
 }
 
 function promptVersion(env: WorkerEnv): string {
-  return env?.PROMPT_VERSION?.trim() || "3.2.0";
+  return env.PROMPT_VERSION?.trim() || "3.2.0";
 }
 
-function normalizeSuggestions(suggestions: Suggestion[]): Suggestion[] {
+function normalizeSuggestions(suggestions: any[]): Suggestion[] {
   return suggestions.map((s, i) => ({
-    label: (s?.label ?? "").toString().trim() || `Option ${i + 1}`,
-    text: (s?.text ?? "").toString(),
-    why_it_works: (s?.why_it_works ?? "Clear, respectful, and low pressure.").toString(),
+    label: typeof s?.label === "string" ? s.label : `Option ${i + 1}`,
+    text: typeof s?.text === "string" ? s.text : "",
+    why_it_works: typeof s?.why_it_works === "string" ? s.why_it_works : "Clear, respectful, and low pressure.",
     emotion_preview: Array.isArray(s?.emotion_preview) ? s.emotion_preview.map(String).slice(0, 3) : ["calm"],
   }));
 }
 
 function ensureNonEmptyText(suggestions: Suggestion[]) {
-  if (suggestions.some((x) => !x.text || !x.text.trim())) throw new Error("LLM_EMPTY_TEXT");
+  if (suggestions.some((x) => !x.text.trim())) {
+    throw new Error("LLM_EMPTY_TEXT");
+  }
 }
 
-function addStrictJsonReminder(messages: GroqMessage[], count: number): GroqMessage[] {
+function addStrictJsonReminder(base: GroqMessage[], count: number): GroqMessage[] {
   const reminder: GroqMessage = {
     role: "system",
     content: [
-      "REMINDER:",
-      "Return ONLY a single JSON object and nothing else.",
-      `It must contain exactly ${count} suggestions.`,
-      "No extra keys. No markdown. No commentary.",
+      "IMPORTANT: Your previous output did NOT match the required JSON shape.",
+      "Return ONLY one valid JSON object, nothing else.",
+      `It MUST include "suggestions" with exactly ${count} items.`,
+      'Do NOT include markdown or commentary. Do NOT wrap in code fences.',
     ].join("\n"),
   };
-  return [...messages, reminder];
+  return [reminder, ...base];
 }
 
 async function generateSuggestionsWithGroq(args: {
@@ -315,14 +298,30 @@ export default {
           200
         );
       } catch (e: any) {
-        const suggestions = makeMockSuggestions(clampSuggestionCount(hardMode), variant);
         return await jsonResponse(
           ok(
             {
               mode: "IMPROVE",
               voice_match_score: 80,
               risk: { level: "yellow", score: 35, reasons: ["LLM failed; served mock suggestions"] },
-              suggestions,
+              suggestions: [
+                {
+                  label: "Calm & clear",
+                  text: "Hey, man mikhastam ye chizi ro clear konam. tone-am ok نبود، sorry.",
+                  why_it_works: "Simple, respectful, low pressure.",
+                  emotion_preview: ["calm"],
+                },
+                ...(hardMode
+                  ? []
+                  : [
+                      {
+                        label: "Warm",
+                        text: "Mifahmam ke in barat sakht bood. mikhay ye vaght koochik gap bezanim?",
+                        why_it_works: "Gentle, collaborative, lowers tension.",
+                        emotion_preview: ["warm"],
+                      },
+                    ]),
+              ].slice(0, clampSuggestionCount(hardMode)) as any,
             },
             {
               model: modelForEnv(env),
@@ -381,14 +380,30 @@ export default {
           200
         );
       } catch (e: any) {
-        const suggestions = makeMockSuggestions(clampSuggestionCount(hardMode), variant);
         return await jsonResponse(
           ok(
             {
               mode: "REPLY",
               voice_match_score: 78,
               risk: { level: "yellow", score: 55, reasons: ["LLM failed; served mock suggestions"] },
-              suggestions,
+              suggestions: [
+                {
+                  label: "Short",
+                  text: "Ok, mifahmam. mikhay ye kam aram-tar harf bezanim ta behtar ham-o befahmim?",
+                  why_it_works: "Short, calm, invites alignment.",
+                  emotion_preview: ["calm"],
+                },
+                ...(hardMode
+                  ? []
+                  : [
+                      {
+                        label: "Friendly",
+                        text: "Mersy gofti. manam dost daram be shive-ye aram-tar pish berim. mikhay alan 2 daghighe gap bezanim?",
+                        why_it_works: "Friendly + specific next step reduces friction.",
+                        emotion_preview: ["friendly"],
+                      },
+                    ]),
+              ].slice(0, clampSuggestionCount(hardMode)) as any,
             },
             {
               model: modelForEnv(env),

@@ -30,4 +30,27 @@ describe("api-worker", () => {
     expect(body.error?.code).toBe("NOT_FOUND");
     expect(body.error?.details?.path).toBe("/nope");
   });
+
+  it("POST /v1/reply blocks obvious self-harm signals", async () => {
+    const payload = {
+      input: {
+        received_text: "man mikhayam khodkoshi konam",
+        hard_mode: true,
+        output_variant: "FINGLISH",
+      },
+    };
+
+    const req = new Request("http://example.com/v1/reply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const res = await worker.fetch(req);
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.status).toBe("blocked");
+    expect(body.error?.code).toBe("SAFETY_BLOCK");
+  });
 });

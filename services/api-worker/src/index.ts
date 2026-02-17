@@ -3,6 +3,7 @@ import { groqChatCompletion, type GroqMessage } from "./groq";
 import { buildMessages } from "./prompt_builder";
 import { parseAndValidateLlmOutput } from "./llm_output";
 import { validateEnvelopeContract } from "./contract_validate";
+import { classifyInput } from "./safety_min";
 import type { Suggestion } from "./types";
 
 type Status = "ok" | "blocked" | "error";
@@ -81,6 +82,17 @@ function ok(data: Envelope["data"], meta?: Record<string, unknown>): Envelope {
     timestamp_ms: nowMs(),
     data,
     error: null,
+    meta: { contract_version: "1.0.0", ...(meta ?? {}) },
+  };
+}
+
+function blocked(code: string, message: string, details?: Record<string, unknown> | null, meta?: Record<string, unknown>): Envelope {
+  return {
+    status: "blocked",
+    request_id: requestId(),
+    timestamp_ms: nowMs(),
+    data: null,
+    error: { code, message, details: details ?? null },
     meta: { contract_version: "1.0.0", ...(meta ?? {}) },
   };
 }
@@ -265,6 +277,15 @@ export default {
         return await jsonResponse(err("VALIDATION_ERROR", "input.draft_text is required", { path: "input.draft_text" }), 400);
       }
 
+      // minimal safety gate
+      const safety = classifyInput(draftText);
+      if (safety.action === "block") {
+        return await jsonResponse(
+          blocked("SAFETY_BLOCK", "Input was blocked by minimal safety gate.", { reasons: safety.reasons }, { safety: safety.reasons }),
+          200
+        );
+      }
+
       const hardMode = Boolean(body?.input?.hard_mode);
       const variant = body?.input?.output_variant as string | undefined;
 
@@ -345,6 +366,15 @@ export default {
       const receivedText = body?.input?.received_text;
       if (typeof receivedText !== "string" || receivedText.trim().length === 0) {
         return await jsonResponse(err("VALIDATION_ERROR", "input.received_text is required", { path: "input.received_text" }), 400);
+      }
+
+      // minimal safety gate
+      const safety = classifyInput(receivedText);
+      if (safety.action === "block") {
+        return await jsonResponse(
+          blocked("SAFETY_BLOCK", "Input was blocked by minimal safety gate.", { reasons: safety.reasons }, { safety: safety.reasons }),
+          200
+        );
       }
 
       const hardMode = Boolean(body?.input?.hard_mode);

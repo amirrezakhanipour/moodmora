@@ -14,6 +14,12 @@ describe("api-worker", () => {
     expect(body.meta?.contract_version).toBe("1.0.0");
     expect(body.data).toEqual({ service: "api-worker", ok: true });
     expect(body.error).toBeNull();
+
+    // observability meta
+    expect(body.meta?.request_path).toBe("/health");
+    expect(body.meta?.mode).toBe("HEALTH");
+    expect(body.meta?.runtime).toBe("worker");
+    expect(typeof body.meta?.request_latency_ms).toBe("number");
   });
 
   it("unknown route returns 404 with NOT_FOUND envelope", async () => {
@@ -29,6 +35,12 @@ describe("api-worker", () => {
     expect(body.data).toBeNull();
     expect(body.error?.code).toBe("NOT_FOUND");
     expect(body.error?.details?.path).toBe("/nope");
+
+    // observability meta
+    expect(body.meta?.request_path).toBe("/nope");
+    expect(body.meta?.mode).toBe("UNKNOWN");
+    expect(body.meta?.runtime).toBe("worker");
+    expect(typeof body.meta?.request_latency_ms).toBe("number");
   });
 
   it("POST /v1/reply blocks obvious self-harm signals", async () => {
@@ -52,5 +64,14 @@ describe("api-worker", () => {
     const body = await res.json();
     expect(body.status).toBe("blocked");
     expect(body.error?.code).toBe("SAFETY_BLOCK");
+
+    // observability meta
+    expect(body.meta?.request_path).toBe("/v1/reply");
+    expect(body.meta?.mode).toBe("REPLY");
+    expect(body.meta?.hard_mode).toBe(true);
+    expect(body.meta?.output_variant).toBe("FINGLISH");
+    expect(body.meta?.runtime).toBe("worker");
+    expect(body.meta?.safety_blocked).toBe(true);
+    expect(typeof body.meta?.request_latency_ms).toBe("number");
   });
 });

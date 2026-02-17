@@ -22,10 +22,11 @@ type WorkerEnv = {
   GROQ_MODEL?: string;
   PROMPT_VERSION?: string;
   LLM_TIMEOUT_MS?: string;
+  BUILD_SHA?: string; // optional: short git sha for observability
 };
 
 async function jsonResponse(body: unknown, status = 200): Promise<Response> {
-  // Optional contract validation in Node (tests/CI). Never block response.
+  // Optional contract validation in Node (tests/CI). Never block response unless strict is enabled.
   try {
     const strict =
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -51,7 +52,7 @@ async function jsonResponse(body: unknown, status = 200): Promise<Response> {
         );
       }
     } else {
-      // best-effort validate (warn-only)
+      // warn-only / best-effort
       await validateEnvelopeContract(body);
     }
   } catch {
@@ -131,6 +132,27 @@ function timeoutMsForEnv(env: WorkerEnv): number {
 
 function promptVersion(env: WorkerEnv): string {
   return env.PROMPT_VERSION?.trim() || "3.2.0";
+}
+
+function buildBaseMeta(args: {
+  env: WorkerEnv;
+  requestPath: string;
+  mode?: "IMPROVE" | "REPLY" | "HEALTH" | "UNKNOWN";
+  hardMode?: boolean;
+  outputVariant?: string;
+  requestLatencyMs: number;
+  safetyBlocked?: boolean;
+}): Record<string, unknown> {
+  return {
+    request_path: args.requestPath,
+    mode: args.mode ?? "UNKNOWN",
+    hard_mode: args.hardMode ?? null,
+    output_variant: args.outputVariant ?? null,
+    runtime: "worker",
+    build: args.env.BUILD_SHA?.trim() || null,
+    request_latency_ms: args.requestLatencyMs,
+    safety_blocked: args.safetyBlocked ?? false,
+  };
 }
 
 function normalizeSuggestions(suggestions: any[]): Suggestion[] {
@@ -249,13 +271,22 @@ async function generateSuggestionsWithGroq(args: {
 
 export default {
   async fetch(request: Request, env: WorkerEnv = {} as WorkerEnv): Promise<Response> {
+    const tReq0 = nowMs();
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/health") {
+      const baseMeta = buildBaseMeta({
+        env,
+        requestPath: url.pathname,
+        mode: "HEALTH",
+        requestLatencyMs: nowMs() - tReq0,
+      });
+
       return await jsonResponse(
         ok(
           { service: "api-worker", ok: true },
           {
+            ...baseMeta,
             prompt_version: promptVersion(env),
             model: modelForEnv(env),
           }
@@ -269,25 +300,46 @@ export default {
       try {
         body = await readJson(request);
       } catch {
-        return await jsonResponse(err("VALIDATION_ERROR", "Invalid JSON body"), 400);
+        const baseMeta = buildBaseMeta({
+          env,
+          requestPath: url.pathname,
+          mode: "IMPROVE",
+          requestLatencyMs: nowMs() - tReq0,
+        });
+        return await jsonResponse(err("VALIDATION_ERROR", "Invalid JSON body", null, baseMeta), 400);
       }
 
       const draftText = body?.input?.draft_text;
       if (typeof draftText !== "string" || draftText.trim().length === 0) {
-        return await jsonResponse(err("VALIDATION_ERROR", "input.draft_text is required", { path: "input.draft_text" }), 400);
-      }
-
-      // minimal safety gate
-      const safety = classifyInput(draftText);
-      if (safety.action === "block") {
-        return await jsonResponse(
-          blocked("SAFETY_BLOCK", "Input was blocked by minimal safety gate.", { reasons: safety.reasons }, { safety: safety.reasons }),
-          200
-        );
+        const baseMeta = buildBaseMeta({
+          env,
+          requestPath: url.pathname,
+          mode: "IMPROVE",
+          requestLatencyMs: nowMs() - tReq0,
+        });
+        return await jsonResponse(err("VALIDATION_ERROR", "input.draft_text is required", { path: "input.draft_text" }, baseMeta), 400);
       }
 
       const hardMode = Boolean(body?.input?.hard_mode);
       const variant = body?.input?.output_variant as string | undefined;
+
+      // minimal safety gate
+      const safety = classifyInput(draftText);
+      if (safety.action === "block") {
+        const baseMeta = buildBaseMeta({
+          env,
+          requestPath: url.pathname,
+          mode: "IMPROVE",
+          hardMode,
+          outputVariant: variant,
+          requestLatencyMs: nowMs() - tReq0,
+          safetyBlocked: true,
+        });
+        return await jsonResponse(
+          blocked("SAFETY_BLOCK", "Input was blocked by minimal safety gate.", { reasons: safety.reasons }, { ...baseMeta, safety: safety.reasons }),
+          200
+        );
+      }
 
       try {
         const out = await generateSuggestionsWithGroq({
@@ -296,6 +348,15 @@ export default {
           variant,
           hardMode,
           inputText: draftText,
+        });
+
+        const baseMeta = buildBaseMeta({
+          env,
+          requestPath: url.pathname,
+          mode: "IMPROVE",
+          hardMode,
+          outputVariant: variant,
+          requestLatencyMs: nowMs() - tReq0,
         });
 
         return await jsonResponse(
@@ -307,6 +368,7 @@ export default {
               suggestions: out.suggestions,
             },
             {
+              ...baseMeta,
               model: modelForEnv(env),
               prompt_version: promptVersion(env),
               usage: out.usage,
@@ -319,6 +381,15 @@ export default {
           200
         );
       } catch (e: any) {
+        const baseMeta = buildBaseMeta({
+          env,
+          requestPath: url.pathname,
+          mode: "IMPROVE",
+          hardMode,
+          outputVariant: variant,
+          requestLatencyMs: nowMs() - tReq0,
+        });
+
         return await jsonResponse(
           ok(
             {
@@ -345,6 +416,7 @@ export default {
               ].slice(0, clampSuggestionCount(hardMode)) as any,
             },
             {
+              ...baseMeta,
               model: modelForEnv(env),
               prompt_version: promptVersion(env),
               llm_error: String(e?.message ?? e),
@@ -360,25 +432,46 @@ export default {
       try {
         body = await readJson(request);
       } catch {
-        return await jsonResponse(err("VALIDATION_ERROR", "Invalid JSON body"), 400);
+        const baseMeta = buildBaseMeta({
+          env,
+          requestPath: url.pathname,
+          mode: "REPLY",
+          requestLatencyMs: nowMs() - tReq0,
+        });
+        return await jsonResponse(err("VALIDATION_ERROR", "Invalid JSON body", null, baseMeta), 400);
       }
 
       const receivedText = body?.input?.received_text;
       if (typeof receivedText !== "string" || receivedText.trim().length === 0) {
-        return await jsonResponse(err("VALIDATION_ERROR", "input.received_text is required", { path: "input.received_text" }), 400);
-      }
-
-      // minimal safety gate
-      const safety = classifyInput(receivedText);
-      if (safety.action === "block") {
-        return await jsonResponse(
-          blocked("SAFETY_BLOCK", "Input was blocked by minimal safety gate.", { reasons: safety.reasons }, { safety: safety.reasons }),
-          200
-        );
+        const baseMeta = buildBaseMeta({
+          env,
+          requestPath: url.pathname,
+          mode: "REPLY",
+          requestLatencyMs: nowMs() - tReq0,
+        });
+        return await jsonResponse(err("VALIDATION_ERROR", "input.received_text is required", { path: "input.received_text" }, baseMeta), 400);
       }
 
       const hardMode = Boolean(body?.input?.hard_mode);
       const variant = body?.input?.output_variant as string | undefined;
+
+      // minimal safety gate
+      const safety = classifyInput(receivedText);
+      if (safety.action === "block") {
+        const baseMeta = buildBaseMeta({
+          env,
+          requestPath: url.pathname,
+          mode: "REPLY",
+          hardMode,
+          outputVariant: variant,
+          requestLatencyMs: nowMs() - tReq0,
+          safetyBlocked: true,
+        });
+        return await jsonResponse(
+          blocked("SAFETY_BLOCK", "Input was blocked by minimal safety gate.", { reasons: safety.reasons }, { ...baseMeta, safety: safety.reasons }),
+          200
+        );
+      }
 
       try {
         const out = await generateSuggestionsWithGroq({
@@ -387,6 +480,15 @@ export default {
           variant,
           hardMode,
           inputText: receivedText,
+        });
+
+        const baseMeta = buildBaseMeta({
+          env,
+          requestPath: url.pathname,
+          mode: "REPLY",
+          hardMode,
+          outputVariant: variant,
+          requestLatencyMs: nowMs() - tReq0,
         });
 
         return await jsonResponse(
@@ -398,6 +500,7 @@ export default {
               suggestions: out.suggestions,
             },
             {
+              ...baseMeta,
               model: modelForEnv(env),
               prompt_version: promptVersion(env),
               usage: out.usage,
@@ -410,6 +513,15 @@ export default {
           200
         );
       } catch (e: any) {
+        const baseMeta = buildBaseMeta({
+          env,
+          requestPath: url.pathname,
+          mode: "REPLY",
+          hardMode,
+          outputVariant: variant,
+          requestLatencyMs: nowMs() - tReq0,
+        });
+
         return await jsonResponse(
           ok(
             {
@@ -436,6 +548,7 @@ export default {
               ].slice(0, clampSuggestionCount(hardMode)) as any,
             },
             {
+              ...baseMeta,
               model: modelForEnv(env),
               prompt_version: promptVersion(env),
               llm_error: String(e?.message ?? e),
@@ -446,6 +559,13 @@ export default {
       }
     }
 
-    return await jsonResponse(err("NOT_FOUND", "Route not found", { path: url.pathname }), 404);
+    const baseMeta = buildBaseMeta({
+      env,
+      requestPath: url.pathname,
+      mode: "UNKNOWN",
+      requestLatencyMs: nowMs() - tReq0,
+    });
+
+    return await jsonResponse(err("NOT_FOUND", "Route not found", { path: url.pathname }, baseMeta), 404);
   },
 };

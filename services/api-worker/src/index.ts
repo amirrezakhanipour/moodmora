@@ -259,7 +259,11 @@ export default {
           mode: "UNKNOWN",
           requestLatencyMs: nowMs() - tReq0,
         });
-        return jsonResponse(ok({ valid: result.ok, errors: result.errors }, baseMeta), 200);
+
+         const errors = result.ok ? [] : result.errors;
+         return jsonResponse(ok({ valid: result.ok, errors }, baseMeta), 200);
+
+
       } catch (e: any) {
         const baseMeta = buildBaseMeta({
           env: safeEnv,

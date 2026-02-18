@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../app_config.dart';
 import '../models/reply_response.dart';
 import '../services/api_client.dart';
+import '../services/preset_store.dart';
 
 class ReplyScreen extends StatefulWidget {
   const ReplyScreen({super.key});
@@ -33,6 +34,17 @@ class _ReplyScreenState extends State<ReplyScreen> {
   @override
   void initState() {
     super.initState();
+
+    // Apply preset defaults once (V1 in-memory)
+    if (AppConfig.datingPresetsEnabled &&
+        AppConfig.datingAddonEnabled &&
+        PresetStore.selected != null) {
+      final p = PresetStore.selected!;
+      _flirtMode = p.flirtMode;
+      _iStuckGoal = p.replyGoal;
+      _iStuckVibe = p.replyVibe;
+    }
+
     _controller.addListener(() {
       if (_result != null || _error != null) {
         setState(() {
@@ -139,30 +151,10 @@ class _ReplyScreenState extends State<ReplyScreen> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            _ModeChip(
-              label: 'Off',
-              value: 'off',
-              groupValue: _flirtMode,
-              onSelected: (v) => setState(() => _flirtMode = v),
-            ),
-            _ModeChip(
-              label: 'Subtle',
-              value: 'subtle',
-              groupValue: _flirtMode,
-              onSelected: (v) => setState(() => _flirtMode = v),
-            ),
-            _ModeChip(
-              label: 'Playful',
-              value: 'playful',
-              groupValue: _flirtMode,
-              onSelected: (v) => setState(() => _flirtMode = v),
-            ),
-            _ModeChip(
-              label: 'Direct',
-              value: 'direct',
-              groupValue: _flirtMode,
-              onSelected: (v) => setState(() => _flirtMode = v),
-            ),
+            _ModeChip(label: 'Off', value: 'off', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
+            _ModeChip(label: 'Subtle', value: 'subtle', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
+            _ModeChip(label: 'Playful', value: 'playful', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
+            _ModeChip(label: 'Direct', value: 'direct', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
           ],
         ),
         const SizedBox(height: 4),
@@ -200,10 +192,7 @@ class _ReplyScreenState extends State<ReplyScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    "I'm stuck",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
+                  const Text("I'm stuck", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 12),
 
                   const Text('Goal', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -212,26 +201,10 @@ class _ReplyScreenState extends State<ReplyScreen> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      ChoiceChip(
-                        label: const Text('Reply friendly'),
-                        selected: goal == 'Reply friendly',
-                        onSelected: (_) => setSheetState(() => goal = 'Reply friendly'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Set boundary'),
-                        selected: goal == 'Set boundary',
-                        onSelected: (_) => setSheetState(() => goal = 'Set boundary'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Flirt back'),
-                        selected: goal == 'Flirt back',
-                        onSelected: (_) => setSheetState(() => goal = 'Flirt back'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Suggest plan'),
-                        selected: goal == 'Suggest plan',
-                        onSelected: (_) => setSheetState(() => goal = 'Suggest plan'),
-                      ),
+                      ChoiceChip(label: const Text('Reply friendly'), selected: goal == 'Reply friendly', onSelected: (_) => setSheetState(() => goal = 'Reply friendly')),
+                      ChoiceChip(label: const Text('Set boundary'), selected: goal == 'Set boundary', onSelected: (_) => setSheetState(() => goal = 'Set boundary')),
+                      ChoiceChip(label: const Text('Flirt back'), selected: goal == 'Flirt back', onSelected: (_) => setSheetState(() => goal = 'Flirt back')),
+                      ChoiceChip(label: const Text('Suggest plan'), selected: goal == 'Suggest plan', onSelected: (_) => setSheetState(() => goal = 'Suggest plan')),
                     ],
                   ),
 
@@ -242,21 +215,9 @@ class _ReplyScreenState extends State<ReplyScreen> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      ChoiceChip(
-                        label: const Text('Calm'),
-                        selected: vibe == 'Calm',
-                        onSelected: (_) => setSheetState(() => vibe = 'Calm'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Playful'),
-                        selected: vibe == 'Playful',
-                        onSelected: (_) => setSheetState(() => vibe = 'Playful'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Direct'),
-                        selected: vibe == 'Direct',
-                        onSelected: (_) => setSheetState(() => vibe = 'Direct'),
-                      ),
+                      ChoiceChip(label: const Text('Calm'), selected: vibe == 'Calm', onSelected: (_) => setSheetState(() => vibe = 'Calm')),
+                      ChoiceChip(label: const Text('Playful'), selected: vibe == 'Playful', onSelected: (_) => setSheetState(() => vibe = 'Playful')),
+                      ChoiceChip(label: const Text('Direct'), selected: vibe == 'Direct', onSelected: (_) => setSheetState(() => vibe = 'Direct')),
                     ],
                   ),
 
@@ -306,7 +267,6 @@ class _ReplyScreenState extends State<ReplyScreen> {
       _iStuckActive = true;
 
       final detail = (_iStuckDetail.trim().isEmpty) ? '' : ', detail: ${_iStuckDetail.trim()}';
-      // Seed input in a structured way (V1 trick)
       _controller.text = "I'm stuck: goal: $_iStuckGoal, vibe: $_iStuckVibe$detail";
     });
 
@@ -357,10 +317,7 @@ class _ReplyScreenState extends State<ReplyScreen> {
           ),
 
           const SizedBox(height: 8),
-
-          // I'm stuck CTA (feature-flagged)
           _iStuckCTA(),
-
           const SizedBox(height: 12),
 
           Row(
@@ -509,7 +466,6 @@ class _ModeChip extends StatelessWidget {
 
 class _InfoBar extends StatelessWidget {
   const _InfoBar({required this.text});
-
   final String text;
 
   @override
@@ -530,7 +486,6 @@ class _InfoBar extends StatelessWidget {
 
 class _ErrorCard extends StatefulWidget {
   const _ErrorCard({required this.message, required this.onRetry});
-
   final String message;
   final VoidCallback? onRetry;
 

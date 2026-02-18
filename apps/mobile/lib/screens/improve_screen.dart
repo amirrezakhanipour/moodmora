@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../app_config.dart';
 import '../models/improve_response.dart';
 import '../services/api_client.dart';
+import '../services/preset_store.dart';
 
 class ImproveScreen extends StatefulWidget {
   const ImproveScreen({super.key});
@@ -33,6 +34,16 @@ class _ImproveScreenState extends State<ImproveScreen> {
   @override
   void initState() {
     super.initState();
+
+    // Apply preset defaults once (V1 in-memory)
+    if (AppConfig.datingPresetsEnabled &&
+        AppConfig.datingAddonEnabled &&
+        PresetStore.selected != null) {
+      final p = PresetStore.selected!;
+      _flirtMode = p.flirtMode;
+      _starterVibe = p.starterVibe;
+    }
+
     _controller.addListener(() {
       if (_result != null || _error != null) {
         setState(() {
@@ -143,30 +154,10 @@ class _ImproveScreenState extends State<ImproveScreen> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            _ModeChip(
-              label: 'Off',
-              value: 'off',
-              groupValue: _flirtMode,
-              onSelected: (v) => setState(() => _flirtMode = v),
-            ),
-            _ModeChip(
-              label: 'Subtle',
-              value: 'subtle',
-              groupValue: _flirtMode,
-              onSelected: (v) => setState(() => _flirtMode = v),
-            ),
-            _ModeChip(
-              label: 'Playful',
-              value: 'playful',
-              groupValue: _flirtMode,
-              onSelected: (v) => setState(() => _flirtMode = v),
-            ),
-            _ModeChip(
-              label: 'Direct',
-              value: 'direct',
-              groupValue: _flirtMode,
-              onSelected: (v) => setState(() => _flirtMode = v),
-            ),
+            _ModeChip(label: 'Off', value: 'off', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
+            _ModeChip(label: 'Subtle', value: 'subtle', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
+            _ModeChip(label: 'Playful', value: 'playful', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
+            _ModeChip(label: 'Direct', value: 'direct', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
           ],
         ),
         const SizedBox(height: 4),
@@ -266,10 +257,7 @@ class _ImproveScreenState extends State<ImproveScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Give me 3 starters',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
+                  const Text('Give me 3 starters', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 12),
 
                   const Text('Stage', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -278,26 +266,10 @@ class _ImproveScreenState extends State<ImproveScreen> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      ChoiceChip(
-                        label: const Text('First message'),
-                        selected: stage == 'First message',
-                        onSelected: (_) => setSheetState(() => stage = 'First message'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('After match'),
-                        selected: stage == 'After match',
-                        onSelected: (_) => setSheetState(() => stage = 'After match'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Re-open chat'),
-                        selected: stage == 'Re-open chat',
-                        onSelected: (_) => setSheetState(() => stage = 'Re-open chat'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('After date'),
-                        selected: stage == 'After date',
-                        onSelected: (_) => setSheetState(() => stage = 'After date'),
-                      ),
+                      ChoiceChip(label: const Text('First message'), selected: stage == 'First message', onSelected: (_) => setSheetState(() => stage = 'First message')),
+                      ChoiceChip(label: const Text('After match'), selected: stage == 'After match', onSelected: (_) => setSheetState(() => stage = 'After match')),
+                      ChoiceChip(label: const Text('Re-open chat'), selected: stage == 'Re-open chat', onSelected: (_) => setSheetState(() => stage = 'Re-open chat')),
+                      ChoiceChip(label: const Text('After date'), selected: stage == 'After date', onSelected: (_) => setSheetState(() => stage = 'After date')),
                     ],
                   ),
 
@@ -308,27 +280,14 @@ class _ImproveScreenState extends State<ImproveScreen> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      ChoiceChip(
-                        label: const Text('Cute'),
-                        selected: vibe == 'Cute',
-                        onSelected: (_) => setSheetState(() => vibe = 'Cute'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Funny'),
-                        selected: vibe == 'Funny',
-                        onSelected: (_) => setSheetState(() => vibe = 'Funny'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Confident'),
-                        selected: vibe == 'Confident',
-                        onSelected: (_) => setSheetState(() => vibe = 'Confident'),
-                      ),
+                      ChoiceChip(label: const Text('Cute'), selected: vibe == 'Cute', onSelected: (_) => setSheetState(() => vibe = 'Cute')),
+                      ChoiceChip(label: const Text('Funny'), selected: vibe == 'Funny', onSelected: (_) => setSheetState(() => vibe = 'Funny')),
+                      ChoiceChip(label: const Text('Confident'), selected: vibe == 'Confident', onSelected: (_) => setSheetState(() => vibe = 'Confident')),
                     ],
                   ),
 
                   const SizedBox(height: 12),
-                  const Text('One detail about them (optional)',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text('One detail about them (optional)', style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   TextField(
                     controller: detailCtrl,

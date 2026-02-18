@@ -25,4 +25,11 @@ class AppConfig {
     'I_STUCK_ENABLED',
     defaultValue: false,
   );
+
+  /// Phase 3.5 kill-switch (Dating presets + micro-onboarding v1)
+  /// flutter run --dart-define=DATING_PRESETS_ENABLED=true
+  static const bool datingPresetsEnabled = bool.fromEnvironment(
+    'DATING_PRESETS_ENABLED',
+    defaultValue: false,
+  );
 }

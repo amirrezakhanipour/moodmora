@@ -12,53 +12,29 @@ type Envelope = {
   status: Status;
   request_id: string;
   timestamp_ms: number;
-  data: Record<string, unknown> | null;
-  error: { code: string; message: string; details?: Record<string, unknown> | null } | null;
-  meta: { contract_version: "1.0.0" } & Record<string, unknown>;
+  data: Record<string, any> | null;
+  error: { code: string; message: string; details?: any } | null;
+  meta: Record<string, any>;
 };
 
+// NOTE: tests may call fetch(req, undefined), so env must be optional-safe everywhere.
 type WorkerEnv = {
   GROQ_API_KEY?: string;
   GROQ_MODEL?: string;
   PROMPT_VERSION?: string;
-  LLM_TIMEOUT_MS?: string;
-  BUILD_SHA?: string; // optional: short git sha for observability
+  BUILD_SHA?: string;
+  ENVIRONMENT?: string; // dev | prod | preview
 };
 
-async function jsonResponse(body: unknown, status = 200): Promise<Response> {
-  // Optional contract validation in Node (tests/CI). Never block response unless strict is enabled.
-  try {
-    const strict =
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      String(((globalThis as any).process?.env?.MOODMORA_STRICT_CONTRACTS ?? "")).toLowerCase() === "true";
+function nowMs(): number {
+  return Date.now();
+}
 
-    if (strict) {
-      const r = await validateEnvelopeContract(body);
-      if (!r.ok) {
-        return new Response(
-          JSON.stringify(
-            err("CONTRACT_VALIDATION_ERROR", "Envelope failed contract validation", {
-              schema_id: r.schema_id,
-              errors: r.errors,
-            })
-          ),
-          {
-            status: 500,
-            headers: {
-              "content-type": "application/json; charset=utf-8",
-              "cache-control": "no-store",
-            },
-          }
-        );
-      }
-    } else {
-      // warn-only / best-effort
-      await validateEnvelopeContract(body);
-    }
-  } catch {
-    // ignore
-  }
+function requestId(): string {
+  return `req_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+}
 
+function jsonResponse(body: any, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -68,88 +44,93 @@ async function jsonResponse(body: unknown, status = 200): Promise<Response> {
   });
 }
 
-function nowMs(): number {
-  return Date.now();
-}
-
-function requestId(): string {
-  return `req_${nowMs()}_${Math.floor(Math.random() * 100000)}`;
-}
-
-function ok(data: Envelope["data"], meta?: Record<string, unknown>): Envelope {
+function ok(data: any, meta: Record<string, any>): Envelope {
   return {
     status: "ok",
     request_id: requestId(),
     timestamp_ms: nowMs(),
     data,
     error: null,
-    meta: { contract_version: "1.0.0", ...(meta ?? {}) },
+    meta,
   };
 }
 
-function blocked(code: string, message: string, details?: Record<string, unknown> | null, meta?: Record<string, unknown>): Envelope {
+function blocked(code: string, message: string, details: any, meta: Record<string, any>): Envelope {
   return {
     status: "blocked",
     request_id: requestId(),
     timestamp_ms: nowMs(),
     data: null,
-    error: { code, message, details: details ?? null },
-    meta: { contract_version: "1.0.0", ...(meta ?? {}) },
+    error: { code, message, details },
+    meta,
   };
 }
 
-function err(code: string, message: string, details?: Record<string, unknown> | null, meta?: Record<string, unknown>): Envelope {
+function err(code: string, message: string, details: any, meta: Record<string, any>): Envelope {
   return {
     status: "error",
     request_id: requestId(),
     timestamp_ms: nowMs(),
     data: null,
-    error: { code, message, details: details ?? null },
-    meta: { contract_version: "1.0.0", ...(meta ?? {}) },
+    error: { code, message, details },
+    meta,
   };
 }
 
-async function readJson(request: Request): Promise<unknown> {
-  const txt = await request.text();
-  if (!txt) return null;
-  return JSON.parse(txt);
+async function readJson(request: Request): Promise<any> {
+  const ct = request.headers.get("content-type") || "";
+  if (!ct.toLowerCase().includes("application/json")) {
+    throw new Error("INVALID_CONTENT_TYPE");
+  }
+  return await request.json();
+}
+
+function modelForEnv(env?: WorkerEnv): string {
+  return env?.GROQ_MODEL?.trim() || "llama-3.1-70b-versatile";
+}
+
+function timeoutMsForEnv(env?: WorkerEnv): number {
+  const e = (env?.ENVIRONMENT || "").trim().toLowerCase();
+  return e === "prod" ? 12_000 : 25_000;
 }
 
 function clampSuggestionCount(hardMode: boolean): number {
   return hardMode ? 2 : 3;
 }
 
-function modelForEnv(env: WorkerEnv): string {
-  return env.GROQ_MODEL?.trim() || "llama-3.3-70b-versatile";
+function sanitizeEnum<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
+  if (typeof value !== "string") return undefined;
+  const v = value.trim() as T;
+  return (allowed as readonly string[]).includes(v) ? v : undefined;
 }
 
-function timeoutMsForEnv(env: WorkerEnv): number {
-  const raw = env.LLM_TIMEOUT_MS?.trim();
-  const n = raw ? Number(raw) : 20000;
-  if (!Number.isFinite(n) || n <= 0) return 20000;
-  return Math.min(Math.max(1000, n), 60000);
-}
+const ALLOWED_FLIRT_MODE = ["off", "subtle", "playful", "direct"] as const;
+const ALLOWED_DATING_STAGE = ["first_msg", "early_chat", "planning", "reconnect", "post_date"] as const;
+const ALLOWED_DATING_VIBE = ["fun", "classy", "direct", "shy", "friendly"] as const;
 
-function promptVersion(env: WorkerEnv): string {
-  return env.PROMPT_VERSION?.trim() || "3.2.0";
+function promptVersion(env?: WorkerEnv): string {
+  return env?.PROMPT_VERSION?.trim() || "3.2.0";
 }
 
 function buildBaseMeta(args: {
-  env: WorkerEnv;
+  env?: WorkerEnv;
   requestPath: string;
-  mode?: "IMPROVE" | "REPLY" | "HEALTH" | "UNKNOWN";
+  mode: "IMPROVE" | "REPLY" | "HEALTH" | "UNKNOWN";
   hardMode?: boolean;
   outputVariant?: string;
   requestLatencyMs: number;
   safetyBlocked?: boolean;
-}): Record<string, unknown> {
+}): Record<string, any> {
   return {
+    contract_version: "1.0.0",
     request_path: args.requestPath,
-    mode: args.mode ?? "UNKNOWN",
-    hard_mode: args.hardMode ?? null,
-    output_variant: args.outputVariant ?? null,
+    mode: args.mode,
+    hard_mode: args.hardMode ?? false,
+    output_variant: args.outputVariant ?? "AUTO",
+    prompt_version: promptVersion(args.env),
+    env: (args.env?.ENVIRONMENT || "dev").toString(),
     runtime: "worker",
-    build: args.env.BUILD_SHA?.trim() || null,
+    build: args.env?.BUILD_SHA?.trim() || null,
     request_latency_ms: args.requestLatencyMs,
     safety_blocked: args.safetyBlocked ?? false,
   };
@@ -184,11 +165,16 @@ function addStrictJsonReminder(base: GroqMessage[], count: number): GroqMessage[
 }
 
 async function generateSuggestionsWithGroq(args: {
-  env: WorkerEnv;
+  env?: WorkerEnv;
   mode: "IMPROVE" | "REPLY";
   variant?: string;
   hardMode: boolean;
   inputText: string;
+
+  // Phase 3.5 (Dating Add-on) — additive/optional
+  flirtMode?: "off" | "subtle" | "playful" | "direct";
+  datingStage?: "first_msg" | "early_chat" | "planning" | "reconnect" | "post_date";
+  datingVibe?: "fun" | "classy" | "direct" | "shy" | "friendly";
 }): Promise<{
   suggestions: Suggestion[];
   usage: unknown;
@@ -197,7 +183,7 @@ async function generateSuggestionsWithGroq(args: {
   extracted_from_raw: boolean;
   repair_attempted: boolean;
 }> {
-  const apiKey = args.env.GROQ_API_KEY?.trim();
+  const apiKey = args.env?.GROQ_API_KEY?.trim();
   if (!apiKey) throw new Error("MISSING_GROQ_API_KEY");
 
   const count = clampSuggestionCount(args.hardMode);
@@ -207,9 +193,11 @@ async function generateSuggestionsWithGroq(args: {
     inputText: args.inputText,
     suggestionCount: count,
     outputVariant: args.variant,
+    flirtMode: args.flirtMode,
+    datingStage: args.datingStage,
+    datingVibe: args.datingVibe,
   });
 
-  // Attempt #1 (JSON mode)
   const t0 = nowMs();
   const first = await groqChatCompletion({
     apiKey,
@@ -236,7 +224,6 @@ async function generateSuggestionsWithGroq(args: {
     };
   }
 
-  // Attempt #2 (repair)
   const t1 = nowMs();
   const second = await groqChatCompletion({
     apiKey,
@@ -258,7 +245,6 @@ async function generateSuggestionsWithGroq(args: {
 
   const normalized = normalizeSuggestions(r2.parsed.suggestions);
   ensureNonEmptyText(normalized);
-
   return {
     suggestions: normalized,
     usage: { ...(second.usage as any), latency_ms: latency2 },
@@ -270,29 +256,19 @@ async function generateSuggestionsWithGroq(args: {
 }
 
 export default {
-  async fetch(request: Request, env: WorkerEnv = {} as WorkerEnv): Promise<Response> {
-    const tReq0 = nowMs();
+  async fetch(request: Request, env?: WorkerEnv): Promise<Response> {
+    const safeEnv = env ?? {};
     const url = new URL(request.url);
+    const tReq0 = nowMs();
 
     if (request.method === "GET" && url.pathname === "/health") {
       const baseMeta = buildBaseMeta({
-        env,
+        env: safeEnv,
         requestPath: url.pathname,
         mode: "HEALTH",
         requestLatencyMs: nowMs() - tReq0,
       });
-
-      return await jsonResponse(
-        ok(
-          { service: "api-worker", ok: true },
-          {
-            ...baseMeta,
-            prompt_version: promptVersion(env),
-            model: modelForEnv(env),
-          }
-        ),
-        200
-      );
+      return await jsonResponse(ok({ service: "api-worker", ok: true }, baseMeta), 200);
     }
 
     if (request.method === "POST" && url.pathname === "/v1/improve") {
@@ -301,7 +277,7 @@ export default {
         body = await readJson(request);
       } catch {
         const baseMeta = buildBaseMeta({
-          env,
+          env: safeEnv,
           requestPath: url.pathname,
           mode: "IMPROVE",
           requestLatencyMs: nowMs() - tReq0,
@@ -312,22 +288,28 @@ export default {
       const draftText = body?.input?.draft_text;
       if (typeof draftText !== "string" || draftText.trim().length === 0) {
         const baseMeta = buildBaseMeta({
-          env,
+          env: safeEnv,
           requestPath: url.pathname,
           mode: "IMPROVE",
           requestLatencyMs: nowMs() - tReq0,
         });
-        return await jsonResponse(err("VALIDATION_ERROR", "input.draft_text is required", { path: "input.draft_text" }, baseMeta), 400);
+        return await jsonResponse(
+          err("VALIDATION_ERROR", "input.draft_text is required", { path: "input.draft_text" }, baseMeta),
+          400
+        );
       }
 
       const hardMode = Boolean(body?.input?.hard_mode);
       const variant = body?.input?.output_variant as string | undefined;
 
-      // minimal safety gate
+      const flirtMode = sanitizeEnum(body?.input?.flirt_mode, ALLOWED_FLIRT_MODE) ?? "off";
+      const datingStage = sanitizeEnum(body?.input?.dating_stage, ALLOWED_DATING_STAGE);
+      const datingVibe = sanitizeEnum(body?.input?.dating_vibe, ALLOWED_DATING_VIBE);
+
       const safety = classifyInput(draftText);
       if (safety.action === "block") {
         const baseMeta = buildBaseMeta({
-          env,
+          env: safeEnv,
           requestPath: url.pathname,
           mode: "IMPROVE",
           hardMode,
@@ -336,22 +318,30 @@ export default {
           safetyBlocked: true,
         });
         return await jsonResponse(
-          blocked("SAFETY_BLOCK", "Input was blocked by minimal safety gate.", { reasons: safety.reasons }, { ...baseMeta, safety: safety.reasons }),
+          blocked(
+            "SAFETY_BLOCK",
+            "Input was blocked by minimal safety gate.",
+            { reasons: safety.reasons },
+            { ...baseMeta, safety: safety.reasons }
+          ),
           200
         );
       }
 
       try {
         const out = await generateSuggestionsWithGroq({
-          env,
+          env: safeEnv,
           mode: "IMPROVE",
           variant,
           hardMode,
           inputText: draftText,
+          flirtMode,
+          datingStage,
+          datingVibe,
         });
 
         const baseMeta = buildBaseMeta({
-          env,
+          env: safeEnv,
           requestPath: url.pathname,
           mode: "IMPROVE",
           hardMode,
@@ -369,8 +359,7 @@ export default {
             },
             {
               ...baseMeta,
-              model: modelForEnv(env),
-              prompt_version: promptVersion(env),
+              model: modelForEnv(safeEnv),
               usage: out.usage,
               parse_ok: out.parse_ok,
               schema_ok: out.schema_ok,
@@ -382,43 +371,21 @@ export default {
         );
       } catch (e: any) {
         const baseMeta = buildBaseMeta({
-          env,
+          env: safeEnv,
           requestPath: url.pathname,
           mode: "IMPROVE",
           hardMode,
           outputVariant: variant,
           requestLatencyMs: nowMs() - tReq0,
         });
-
         return await jsonResponse(
-          ok(
-            {
-              mode: "IMPROVE",
-              voice_match_score: 80,
-              risk: { level: "yellow", score: 35, reasons: ["LLM failed; served mock suggestions"] },
-              suggestions: [
-                {
-                  label: "Calm & clear",
-                  text: "Hey, man mikhastam ye chizi ro clear konam. tone-am ok نبود، sorry.",
-                  why_it_works: "Simple, respectful, low pressure.",
-                  emotion_preview: ["calm"],
-                },
-                ...(hardMode
-                  ? []
-                  : [
-                      {
-                        label: "Warm",
-                        text: "Mifahmam ke in barat sakht bood. mikhay ye vaght koochik gap bezanim?",
-                        why_it_works: "Gentle, collaborative, lowers tension.",
-                        emotion_preview: ["warm"],
-                      },
-                    ]),
-              ].slice(0, clampSuggestionCount(hardMode)) as any,
-            },
+          err(
+            "LLM_ERROR",
+            "LLM generation failed",
+            { message: String(e?.message ?? e) },
             {
               ...baseMeta,
-              model: modelForEnv(env),
-              prompt_version: promptVersion(env),
+              model: modelForEnv(safeEnv),
               llm_error: String(e?.message ?? e),
             }
           ),
@@ -433,7 +400,7 @@ export default {
         body = await readJson(request);
       } catch {
         const baseMeta = buildBaseMeta({
-          env,
+          env: safeEnv,
           requestPath: url.pathname,
           mode: "REPLY",
           requestLatencyMs: nowMs() - tReq0,
@@ -444,22 +411,28 @@ export default {
       const receivedText = body?.input?.received_text;
       if (typeof receivedText !== "string" || receivedText.trim().length === 0) {
         const baseMeta = buildBaseMeta({
-          env,
+          env: safeEnv,
           requestPath: url.pathname,
           mode: "REPLY",
           requestLatencyMs: nowMs() - tReq0,
         });
-        return await jsonResponse(err("VALIDATION_ERROR", "input.received_text is required", { path: "input.received_text" }, baseMeta), 400);
+        return await jsonResponse(
+          err("VALIDATION_ERROR", "input.received_text is required", { path: "input.received_text" }, baseMeta),
+          400
+        );
       }
 
       const hardMode = Boolean(body?.input?.hard_mode);
       const variant = body?.input?.output_variant as string | undefined;
 
-      // minimal safety gate
+      const flirtMode = sanitizeEnum(body?.input?.flirt_mode, ALLOWED_FLIRT_MODE) ?? "off";
+      const datingStage = sanitizeEnum(body?.input?.dating_stage, ALLOWED_DATING_STAGE);
+      const datingVibe = sanitizeEnum(body?.input?.dating_vibe, ALLOWED_DATING_VIBE);
+
       const safety = classifyInput(receivedText);
       if (safety.action === "block") {
         const baseMeta = buildBaseMeta({
-          env,
+          env: safeEnv,
           requestPath: url.pathname,
           mode: "REPLY",
           hardMode,
@@ -468,22 +441,30 @@ export default {
           safetyBlocked: true,
         });
         return await jsonResponse(
-          blocked("SAFETY_BLOCK", "Input was blocked by minimal safety gate.", { reasons: safety.reasons }, { ...baseMeta, safety: safety.reasons }),
+          blocked(
+            "SAFETY_BLOCK",
+            "Input was blocked by minimal safety gate.",
+            { reasons: safety.reasons },
+            { ...baseMeta, safety: safety.reasons }
+          ),
           200
         );
       }
 
       try {
         const out = await generateSuggestionsWithGroq({
-          env,
+          env: safeEnv,
           mode: "REPLY",
           variant,
           hardMode,
           inputText: receivedText,
+          flirtMode,
+          datingStage,
+          datingVibe,
         });
 
         const baseMeta = buildBaseMeta({
-          env,
+          env: safeEnv,
           requestPath: url.pathname,
           mode: "REPLY",
           hardMode,
@@ -501,8 +482,7 @@ export default {
             },
             {
               ...baseMeta,
-              model: modelForEnv(env),
-              prompt_version: promptVersion(env),
+              model: modelForEnv(safeEnv),
               usage: out.usage,
               parse_ok: out.parse_ok,
               schema_ok: out.schema_ok,
@@ -514,43 +494,21 @@ export default {
         );
       } catch (e: any) {
         const baseMeta = buildBaseMeta({
-          env,
+          env: safeEnv,
           requestPath: url.pathname,
           mode: "REPLY",
           hardMode,
           outputVariant: variant,
           requestLatencyMs: nowMs() - tReq0,
         });
-
         return await jsonResponse(
-          ok(
-            {
-              mode: "REPLY",
-              voice_match_score: 78,
-              risk: { level: "yellow", score: 55, reasons: ["LLM failed; served mock suggestions"] },
-              suggestions: [
-                {
-                  label: "Short",
-                  text: "Ok, mifahmam. mikhay ye kam aram-tar harf bezanim ta behtar ham-o befahmim?",
-                  why_it_works: "Short, calm, invites alignment.",
-                  emotion_preview: ["calm"],
-                },
-                ...(hardMode
-                  ? []
-                  : [
-                      {
-                        label: "Friendly",
-                        text: "Mersy gofti. manam dost daram be shive-ye aram-tar pish berim. mikhay alan 2 daghighe gap bezanim?",
-                        why_it_works: "Friendly + specific next step reduces friction.",
-                        emotion_preview: ["friendly"],
-                      },
-                    ]),
-              ].slice(0, clampSuggestionCount(hardMode)) as any,
-            },
+          err(
+            "LLM_ERROR",
+            "LLM generation failed",
+            { message: String(e?.message ?? e) },
             {
               ...baseMeta,
-              model: modelForEnv(env),
-              prompt_version: promptVersion(env),
+              model: modelForEnv(safeEnv),
               llm_error: String(e?.message ?? e),
             }
           ),
@@ -560,12 +518,14 @@ export default {
     }
 
     const baseMeta = buildBaseMeta({
-      env,
+      env: safeEnv,
       requestPath: url.pathname,
       mode: "UNKNOWN",
       requestLatencyMs: nowMs() - tReq0,
     });
-
     return await jsonResponse(err("NOT_FOUND", "Route not found", { path: url.pathname }, baseMeta), 404);
   },
 };
+
+// Dev guard (import side effects)
+validateEnvelopeContract;

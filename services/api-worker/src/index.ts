@@ -85,6 +85,7 @@ function promptVersion(env?: WorkerEnv): string {
 
 function buildBaseMeta(args: {
   env?: WorkerEnv;
+  requestId?: string;
   requestPath: string;
   mode: "IMPROVE" | "REPLY" | "HEALTH" | "UNKNOWN";
   hardMode?: boolean;
@@ -93,6 +94,7 @@ function buildBaseMeta(args: {
   safetyBlocked?: boolean;
 }): Record<string, any> {
   return {
+    request_id: args.requestId ?? null,
     contract_version: "1.0.0",
     request_path: args.requestPath,
     mode: args.mode,
@@ -237,10 +239,16 @@ export default {
 
     const url = new URL(request.url);
 
+    const requestId =
+      request.headers.get("x-request-id") ||
+      request.headers.get("cf-ray") ||
+      crypto.randomUUID();
+
     // health
     if (request.method === "GET" && url.pathname === "/health") {
       const baseMeta = buildBaseMeta({
         env: safeEnv,
+        requestId,
         requestPath: url.pathname,
         mode: "HEALTH",
         requestLatencyMs: nowMs() - tReq0,
@@ -255,6 +263,7 @@ export default {
         const result = await validateEnvelopeContract(body);
         const baseMeta = buildBaseMeta({
           env: safeEnv,
+          requestId,
           requestPath: url.pathname,
           mode: "UNKNOWN",
           requestLatencyMs: nowMs() - tReq0,
@@ -263,6 +272,7 @@ export default {
       } catch (e: any) {
         const baseMeta = buildBaseMeta({
           env: safeEnv,
+          requestId,
           requestPath: url.pathname,
           mode: "UNKNOWN",
           requestLatencyMs: nowMs() - tReq0,
@@ -279,6 +289,7 @@ export default {
       } catch (e) {
         const baseMeta = buildBaseMeta({
           env: safeEnv,
+          requestId,
           requestPath: url.pathname,
           mode: "IMPROVE",
           requestLatencyMs: nowMs() - tReq0,
@@ -290,6 +301,7 @@ export default {
       if (typeof draftText !== "string" || draftText.trim().length === 0) {
         const baseMeta = buildBaseMeta({
           env: safeEnv,
+          requestId,
           requestPath: url.pathname,
           mode: "IMPROVE",
           requestLatencyMs: nowMs() - tReq0,
@@ -309,6 +321,7 @@ export default {
       if (safety.action === "block") {
         const baseMeta = buildBaseMeta({
           env: safeEnv,
+          requestId,
           requestPath: url.pathname,
           mode: "IMPROVE",
           hardMode,
@@ -345,6 +358,7 @@ export default {
 
         const baseMeta = buildBaseMeta({
           env: safeEnv,
+          requestId,
           requestPath: url.pathname,
           mode: "IMPROVE",
           hardMode,
@@ -375,6 +389,7 @@ export default {
       } catch (e: any) {
         const baseMeta = buildBaseMeta({
           env: safeEnv,
+          requestId,
           requestPath: url.pathname,
           mode: "IMPROVE",
           hardMode,
@@ -393,6 +408,7 @@ export default {
       } catch (e) {
         const baseMeta = buildBaseMeta({
           env: safeEnv,
+          requestId,
           requestPath: url.pathname,
           mode: "REPLY",
           requestLatencyMs: nowMs() - tReq0,
@@ -404,6 +420,7 @@ export default {
       if (typeof receivedText !== "string" || receivedText.trim().length === 0) {
         const baseMeta = buildBaseMeta({
           env: safeEnv,
+          requestId,
           requestPath: url.pathname,
           mode: "REPLY",
           requestLatencyMs: nowMs() - tReq0,
@@ -426,6 +443,7 @@ export default {
       if (safety.action === "block") {
         const baseMeta = buildBaseMeta({
           env: safeEnv,
+          requestId,
           requestPath: url.pathname,
           mode: "REPLY",
           hardMode,
@@ -462,6 +480,7 @@ export default {
 
         const baseMeta = buildBaseMeta({
           env: safeEnv,
+          requestId,
           requestPath: url.pathname,
           mode: "REPLY",
           hardMode,
@@ -492,6 +511,7 @@ export default {
       } catch (e: any) {
         const baseMeta = buildBaseMeta({
           env: safeEnv,
+          requestId,
           requestPath: url.pathname,
           mode: "REPLY",
           hardMode,
@@ -505,6 +525,7 @@ export default {
     // unknown route
     const baseMeta = buildBaseMeta({
       env: safeEnv,
+      requestId,
       requestPath: url.pathname,
       mode: "UNKNOWN",
       requestLatencyMs: nowMs() - tReq0,

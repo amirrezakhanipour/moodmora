@@ -17,6 +17,15 @@ class _ReplyScreenState extends State<ReplyScreen> {
   bool _hardMode = false;
   String _variant = 'FINGLISH';
 
+  // Phase 3.5 (Dating Add-on) — UI state (guarded by feature flag)
+  String _flirtMode = 'off'; // off | subtle | playful | direct
+
+  // Phase 3.5 (I'm stuck) — UI state
+  bool _iStuckActive = false;
+  String _iStuckGoal = 'Reply friendly'; // Reply friendly | Set boundary | Flirt back | Suggest plan
+  String _iStuckVibe = 'Calm'; // Calm | Playful | Direct
+  String _iStuckDetail = '';
+
   bool _loading = false;
   ReplyResponse? _result;
   String? _error;
@@ -48,6 +57,13 @@ class _ReplyScreenState extends State<ReplyScreen> {
       _result = null;
       _error = null;
       _loading = false;
+
+      _flirtMode = 'off';
+
+      _iStuckActive = false;
+      _iStuckGoal = 'Reply friendly';
+      _iStuckVibe = 'Calm';
+      _iStuckDetail = '';
     });
     FocusManager.instance.primaryFocus?.unfocus();
   }
@@ -63,13 +79,17 @@ class _ReplyScreenState extends State<ReplyScreen> {
 
     final api = ApiClient(baseUrl: AppConfig.apiBaseUrl);
 
-    final body = {
-      'input': {
-        'received_text': _controller.text.trim(),
-        'hard_mode': _hardMode,
-        'output_variant': _variant,
-      },
+    final input = <String, dynamic>{
+      'received_text': _controller.text.trim(),
+      'hard_mode': _hardMode,
+      'output_variant': _variant,
     };
+
+    if (AppConfig.datingAddonEnabled) {
+      input['flirt_mode'] = _flirtMode;
+    }
+
+    final body = {'input': input};
 
     try {
       final env = await api.postEnvelope(
@@ -97,9 +117,215 @@ class _ReplyScreenState extends State<ReplyScreen> {
   Future<void> _copy(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Copied')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
+  }
+
+  Widget _datingChipRow() {
+    if (!AppConfig.datingAddonEnabled) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Text(
+          'Flirt mode',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _ModeChip(
+              label: 'Off',
+              value: 'off',
+              groupValue: _flirtMode,
+              onSelected: (v) => setState(() => _flirtMode = v),
+            ),
+            _ModeChip(
+              label: 'Subtle',
+              value: 'subtle',
+              groupValue: _flirtMode,
+              onSelected: (v) => setState(() => _flirtMode = v),
+            ),
+            _ModeChip(
+              label: 'Playful',
+              value: 'playful',
+              groupValue: _flirtMode,
+              onSelected: (v) => setState(() => _flirtMode = v),
+            ),
+            _ModeChip(
+              label: 'Direct',
+              value: 'direct',
+              groupValue: _flirtMode,
+              onSelected: (v) => setState(() => _flirtMode = v),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _flirtMode == 'off' ? 'Normal tone (no flirting).' : 'Dating tone enabled: $_flirtMode',
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+
+  // ---------- I'm stuck flow ----------
+  Future<void> _openIStuckSheet() async {
+    if (!AppConfig.iStuckEnabled) return;
+
+    String goal = _iStuckGoal;
+    String vibe = _iStuckVibe;
+    final detailCtrl = TextEditingController(text: _iStuckDetail);
+
+    final result = await showModalBottomSheet<Map<String, String>>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 12,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "I'm stuck",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 12),
+
+                  const Text('Goal', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Reply friendly'),
+                        selected: goal == 'Reply friendly',
+                        onSelected: (_) => setSheetState(() => goal = 'Reply friendly'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Set boundary'),
+                        selected: goal == 'Set boundary',
+                        onSelected: (_) => setSheetState(() => goal = 'Set boundary'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Flirt back'),
+                        selected: goal == 'Flirt back',
+                        onSelected: (_) => setSheetState(() => goal = 'Flirt back'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Suggest plan'),
+                        selected: goal == 'Suggest plan',
+                        onSelected: (_) => setSheetState(() => goal = 'Suggest plan'),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+                  const Text('Vibe', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Calm'),
+                        selected: vibe == 'Calm',
+                        onSelected: (_) => setSheetState(() => vibe = 'Calm'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Playful'),
+                        selected: vibe == 'Playful',
+                        onSelected: (_) => setSheetState(() => vibe = 'Playful'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Direct'),
+                        selected: vibe == 'Direct',
+                        onSelected: (_) => setSheetState(() => vibe = 'Direct'),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+                  const Text('One detail (optional)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: detailCtrl,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: 'e.g., they asked about weekend, they were cold, they joked…',
+                    ),
+                    maxLines: 2,
+                  ),
+
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () {
+                            Navigator.of(ctx).pop({
+                              'goal': goal,
+                              'vibe': vibe,
+                              'detail': detailCtrl.text.trim(),
+                            });
+                          },
+                          child: const Text('Generate reply'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (!mounted || result == null) return;
+
+    setState(() {
+      _iStuckGoal = result['goal'] ?? _iStuckGoal;
+      _iStuckVibe = result['vibe'] ?? _iStuckVibe;
+      _iStuckDetail = result['detail'] ?? _iStuckDetail;
+      _iStuckActive = true;
+
+      final detail = (_iStuckDetail.trim().isEmpty) ? '' : ', detail: ${_iStuckDetail.trim()}';
+      // Seed input in a structured way (V1 trick)
+      _controller.text = "I'm stuck: goal: $_iStuckGoal, vibe: $_iStuckVibe$detail";
+    });
+
+    _controller.selection = TextSelection.fromPosition(
+      TextPosition(offset: _controller.text.length),
+    );
+
+    await _submit();
+  }
+
+  Widget _iStuckCTA() {
+    if (!AppConfig.iStuckEnabled) return const SizedBox.shrink();
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton(
+        onPressed: _openIStuckSheet,
+        child: const Text("I'm stuck"),
+      ),
+    );
   }
 
   @override
@@ -130,6 +356,11 @@ class _ReplyScreenState extends State<ReplyScreen> {
             onChanged: (_) => setState(() {}),
           ),
 
+          const SizedBox(height: 8),
+
+          // I'm stuck CTA (feature-flagged)
+          _iStuckCTA(),
+
           const SizedBox(height: 12),
 
           Row(
@@ -143,10 +374,7 @@ class _ReplyScreenState extends State<ReplyScreen> {
                     labelText: 'Output variant',
                   ),
                   items: const [
-                    DropdownMenuItem(
-                      value: 'FINGLISH',
-                      child: Text('Finglish'),
-                    ),
+                    DropdownMenuItem(value: 'FINGLISH', child: Text('Finglish')),
                     DropdownMenuItem(value: 'EN', child: Text('English')),
                   ],
                   onChanged: (v) {
@@ -167,6 +395,8 @@ class _ReplyScreenState extends State<ReplyScreen> {
             ],
           ),
 
+          _datingChipRow(),
+
           const SizedBox(height: 12),
 
           Row(
@@ -180,18 +410,12 @@ class _ReplyScreenState extends State<ReplyScreen> {
                           width: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Generate replies'),
+                      : Text(_iStuckActive ? 'Generate reply' : 'Generate replies'),
                 ),
               ),
               const SizedBox(width: 12),
               OutlinedButton(
-                onPressed:
-                    (_loading &&
-                        !_canSubmit &&
-                        _result == null &&
-                        _error == null)
-                    ? null
-                    : _clearAll,
+                onPressed: _loading ? null : _clearAll,
                 child: const Text('Clear'),
               ),
             ],
@@ -259,6 +483,30 @@ class _ReplyScreenState extends State<ReplyScreen> {
   }
 }
 
+class _ModeChip extends StatelessWidget {
+  const _ModeChip({
+    required this.label,
+    required this.value,
+    required this.groupValue,
+    required this.onSelected,
+  });
+
+  final String label;
+  final String value;
+  final String groupValue;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = value == groupValue;
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => onSelected(value),
+    );
+  }
+}
+
 class _InfoBar extends StatelessWidget {
   const _InfoBar({required this.text});
 
@@ -298,9 +546,7 @@ class _ErrorCardState extends State<_ErrorCard> {
     final msg = widget.message;
     final previewLen = 220;
     final canExpand = msg.length > previewLen;
-    final shown = (!_expanded && canExpand)
-        ? '${msg.substring(0, previewLen)}…'
-        : msg;
+    final shown = (!_expanded && canExpand) ? '${msg.substring(0, previewLen)}…' : msg;
 
     return Card(
       child: Padding(

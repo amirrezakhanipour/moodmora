@@ -19,7 +19,32 @@ export type PromptBuildArgs = {
   flirtMode?: FlirtMode; // default handled by caller ("off")
   datingStage?: DatingStage;
   datingVibe?: DatingVibe;
+
+  // Phase 3.5.5 — soft safety hints (allow + redirect)
+  safetyHints?: string[]; // e.g. ["consent_redirect", "sfw_redirect"]
 };
+
+function safetyHintBlock(hints: string[] | undefined): string {
+  const hs = (hints ?? []).filter(Boolean);
+  if (hs.length === 0) return "";
+
+  const lines: string[] = [];
+  lines.push("Safety guidance (soft constraints):");
+
+  if (hs.includes("consent_redirect")) {
+    lines.push("- Use consent-forward, non-pressuring language. No guilt, no coercion, no threats, no ultimatums.");
+    lines.push("- If the user is pressuring for intimacy/nudes/sex, gently redirect to boundaries and respect.");
+  }
+
+  if (hs.includes("sfw_redirect")) {
+    lines.push("- Keep it safe-for-work and non-explicit. Avoid sexual details or requests for nudes.");
+    lines.push("- Redirect toward respectful, normal conversation.");
+  }
+
+  lines.push("- Do not mention policies. Just write a good, respectful message.");
+  lines.push("");
+  return lines.join("\n");
+}
 
 export function buildMessages(args: PromptBuildArgs): GroqMessage[] {
   const languageHint =
@@ -53,6 +78,8 @@ export function buildMessages(args: PromptBuildArgs): GroqMessage[] {
           .filter(Boolean)
           .join("\n");
 
+  const safetyBlock = safetyHintBlock(args.safetyHints);
+
   const system = [
     "You are MoodMora, an assistant that drafts emotionally intelligent, low-conflict messages.",
     "IMPORTANT OUTPUT RULES:",
@@ -62,7 +89,7 @@ export function buildMessages(args: PromptBuildArgs): GroqMessage[] {
     "- Keep the messages short, calm, and low-pressure.",
     languageHint,
     datingHint,
-    "",
+    safetyBlock,
     "JSON Schema (shape):",
     `{
       "suggestions": [

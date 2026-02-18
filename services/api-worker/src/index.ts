@@ -7,82 +7,22 @@ import { classifyInput } from "./safety_min";
 import type { Suggestion } from "./types";
 
 type Status = "ok" | "blocked" | "error";
+type ErrorCode = "NOT_FOUND" | "VALIDATION_ERROR" | "INTERNAL_ERROR" | "SAFETY_BLOCK" | "CONTRACT_ERROR";
 
-type Envelope = {
-  status: Status;
-  request_id: string;
-  timestamp_ms: number;
-  data: Record<string, any> | null;
-  error: { code: string; message: string; details?: any } | null;
-  meta: Record<string, any>;
-};
-
-// NOTE: tests may call fetch(req, undefined), so env must be optional-safe everywhere.
 type WorkerEnv = {
   GROQ_API_KEY?: string;
   GROQ_MODEL?: string;
-  PROMPT_VERSION?: string;
+  ENVIRONMENT?: string;
   BUILD_SHA?: string;
-  ENVIRONMENT?: string; // dev | prod | preview
+  PROMPT_VERSION?: string;
 };
 
 function nowMs(): number {
   return Date.now();
 }
 
-function requestId(): string {
-  return `req_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
-}
-
-function jsonResponse(body: any, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-    },
-  });
-}
-
-function ok(data: any, meta: Record<string, any>): Envelope {
-  return {
-    status: "ok",
-    request_id: requestId(),
-    timestamp_ms: nowMs(),
-    data,
-    error: null,
-    meta,
-  };
-}
-
-function blocked(code: string, message: string, details: any, meta: Record<string, any>): Envelope {
-  return {
-    status: "blocked",
-    request_id: requestId(),
-    timestamp_ms: nowMs(),
-    data: null,
-    error: { code, message, details },
-    meta,
-  };
-}
-
-function err(code: string, message: string, details: any, meta: Record<string, any>): Envelope {
-  return {
-    status: "error",
-    request_id: requestId(),
-    timestamp_ms: nowMs(),
-    data: null,
-    error: { code, message, details },
-    meta,
-  };
-}
-
-async function readJson(request: Request): Promise<any> {
-  const ct = request.headers.get("content-type") || "";
-  if (!ct.toLowerCase().includes("application/json")) {
-    throw new Error("INVALID_CONTENT_TYPE");
-  }
-  return await request.json();
+function clampSuggestionCount(hardMode: boolean): number {
+  return hardMode ? 5 : 3;
 }
 
 function modelForEnv(env?: WorkerEnv): string {
@@ -90,12 +30,43 @@ function modelForEnv(env?: WorkerEnv): string {
 }
 
 function timeoutMsForEnv(env?: WorkerEnv): number {
-  const e = (env?.ENVIRONMENT || "").trim().toLowerCase();
-  return e === "prod" ? 12_000 : 25_000;
+  const e = (env?.ENVIRONMENT || "dev").toString();
+  return e === "prod" ? 12_000 : 20_000;
 }
 
-function clampSuggestionCount(hardMode: boolean): number {
-  return hardMode ? 2 : 3;
+function jsonResponse(body: any, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "content-type": "application/json",
+      "cache-control": "no-store",
+    },
+  });
+}
+
+function ok(data: any, meta?: Record<string, any>) {
+  return { status: "ok" as Status, data, error: null, meta: meta ?? {} };
+}
+
+function blocked(code: ErrorCode, message: string, details?: any, meta?: Record<string, any>) {
+  return {
+    status: "blocked" as Status,
+    data: null,
+    error: { code, message, details: details ?? null },
+    meta: meta ?? {},
+  };
+}
+
+function err(code: ErrorCode, message: string, details?: any, meta?: Record<string, any>) {
+  return { status: "error" as Status, data: null, error: { code, message, details: details ?? null }, meta: meta ?? {} };
+}
+
+async function parseJsonBody(request: Request): Promise<any> {
+  const ct = request.headers.get("content-type") || "";
+  if (!ct.toLowerCase().includes("application/json")) {
+    throw new Error("INVALID_CONTENT_TYPE");
+  }
+  return await request.json();
 }
 
 function sanitizeEnum<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
@@ -175,6 +146,9 @@ async function generateSuggestionsWithGroq(args: {
   flirtMode?: "off" | "subtle" | "playful" | "direct";
   datingStage?: "first_msg" | "early_chat" | "planning" | "reconnect" | "post_date";
   datingVibe?: "fun" | "classy" | "direct" | "shy" | "friendly";
+
+  // Phase 3.5.5 — soft safety hints (allow + redirect)
+  safetyHints?: string[];
 }): Promise<{
   suggestions: Suggestion[];
   usage: unknown;
@@ -196,6 +170,7 @@ async function generateSuggestionsWithGroq(args: {
     flirtMode: args.flirtMode,
     datingStage: args.datingStage,
     datingVibe: args.datingVibe,
+    safetyHints: args.safetyHints,
   });
 
   const t0 = nowMs();
@@ -258,9 +233,11 @@ async function generateSuggestionsWithGroq(args: {
 export default {
   async fetch(request: Request, env?: WorkerEnv): Promise<Response> {
     const safeEnv = env ?? {};
-    const url = new URL(request.url);
     const tReq0 = nowMs();
 
+    const url = new URL(request.url);
+
+    // health
     if (request.method === "GET" && url.pathname === "/health") {
       const baseMeta = buildBaseMeta({
         env: safeEnv,
@@ -268,21 +245,45 @@ export default {
         mode: "HEALTH",
         requestLatencyMs: nowMs() - tReq0,
       });
-      return await jsonResponse(ok({ service: "api-worker", ok: true }, baseMeta), 200);
+      return jsonResponse(ok({ service: "api-worker", ok: true }, baseMeta), 200);
     }
 
+    // contract validation endpoint (dev-only convenience)
+    if (request.method === "POST" && url.pathname === "/v1/contracts/validate") {
+      try {
+        const body = await parseJsonBody(request);
+        const result = await validateEnvelopeContract(body);
+        const baseMeta = buildBaseMeta({
+          env: safeEnv,
+          requestPath: url.pathname,
+          mode: "UNKNOWN",
+          requestLatencyMs: nowMs() - tReq0,
+        });
+        return jsonResponse(ok({ valid: result.ok, errors: result.errors }, baseMeta), 200);
+      } catch (e: any) {
+        const baseMeta = buildBaseMeta({
+          env: safeEnv,
+          requestPath: url.pathname,
+          mode: "UNKNOWN",
+          requestLatencyMs: nowMs() - tReq0,
+        });
+        return jsonResponse(err("VALIDATION_ERROR", "Invalid JSON body", String(e?.message ?? e), baseMeta), 400);
+      }
+    }
+
+    // IMPROVE
     if (request.method === "POST" && url.pathname === "/v1/improve") {
       let body: any;
       try {
-        body = await readJson(request);
-      } catch {
+        body = await parseJsonBody(request);
+      } catch (e) {
         const baseMeta = buildBaseMeta({
           env: safeEnv,
           requestPath: url.pathname,
           mode: "IMPROVE",
           requestLatencyMs: nowMs() - tReq0,
         });
-        return await jsonResponse(err("VALIDATION_ERROR", "Invalid JSON body", null, baseMeta), 400);
+        return jsonResponse(err("VALIDATION_ERROR", "Invalid JSON body", null, baseMeta), 400);
       }
 
       const draftText = body?.input?.draft_text;
@@ -293,15 +294,13 @@ export default {
           mode: "IMPROVE",
           requestLatencyMs: nowMs() - tReq0,
         });
-        return await jsonResponse(
-          err("VALIDATION_ERROR", "input.draft_text is required", { path: "input.draft_text" }, baseMeta),
-          400
-        );
+        return jsonResponse(err("VALIDATION_ERROR", "input.draft_text is required", { path: "input.draft_text" }, baseMeta), 400);
       }
 
       const hardMode = Boolean(body?.input?.hard_mode);
       const variant = body?.input?.output_variant as string | undefined;
 
+      // Phase 3.5: smart defaults
       const flirtMode = sanitizeEnum(body?.input?.flirt_mode, ALLOWED_FLIRT_MODE) ?? "off";
       const datingStage = sanitizeEnum(body?.input?.dating_stage, ALLOWED_DATING_STAGE);
       const datingVibe = sanitizeEnum(body?.input?.dating_vibe, ALLOWED_DATING_VIBE);
@@ -317,7 +316,7 @@ export default {
           requestLatencyMs: nowMs() - tReq0,
           safetyBlocked: true,
         });
-        return await jsonResponse(
+        return jsonResponse(
           blocked(
             "SAFETY_BLOCK",
             "Input was blocked by minimal safety gate.",
@@ -327,6 +326,9 @@ export default {
           200
         );
       }
+
+      // Phase 3.5.5: soft redirects (only pass *_redirect hints into prompt)
+      const safetyHints = (safety.reasons ?? []).filter((r) => r.endsWith("_redirect"));
 
       try {
         const out = await generateSuggestionsWithGroq({
@@ -338,6 +340,7 @@ export default {
           flirtMode,
           datingStage,
           datingVibe,
+          safetyHints,
         });
 
         const baseMeta = buildBaseMeta({
@@ -349,7 +352,7 @@ export default {
           requestLatencyMs: nowMs() - tReq0,
         });
 
-        return await jsonResponse(
+        return jsonResponse(
           ok(
             {
               mode: "IMPROVE",
@@ -378,34 +381,23 @@ export default {
           outputVariant: variant,
           requestLatencyMs: nowMs() - tReq0,
         });
-        return await jsonResponse(
-          err(
-            "LLM_ERROR",
-            "LLM generation failed",
-            { message: String(e?.message ?? e) },
-            {
-              ...baseMeta,
-              model: modelForEnv(safeEnv),
-              llm_error: String(e?.message ?? e),
-            }
-          ),
-          200
-        );
+        return jsonResponse(err("INTERNAL_ERROR", "Failed to generate suggestions", String(e?.message ?? e), baseMeta), 500);
       }
     }
 
+    // REPLY
     if (request.method === "POST" && url.pathname === "/v1/reply") {
       let body: any;
       try {
-        body = await readJson(request);
-      } catch {
+        body = await parseJsonBody(request);
+      } catch (e) {
         const baseMeta = buildBaseMeta({
           env: safeEnv,
           requestPath: url.pathname,
           mode: "REPLY",
           requestLatencyMs: nowMs() - tReq0,
         });
-        return await jsonResponse(err("VALIDATION_ERROR", "Invalid JSON body", null, baseMeta), 400);
+        return jsonResponse(err("VALIDATION_ERROR", "Invalid JSON body", null, baseMeta), 400);
       }
 
       const receivedText = body?.input?.received_text;
@@ -416,7 +408,7 @@ export default {
           mode: "REPLY",
           requestLatencyMs: nowMs() - tReq0,
         });
-        return await jsonResponse(
+        return jsonResponse(
           err("VALIDATION_ERROR", "input.received_text is required", { path: "input.received_text" }, baseMeta),
           400
         );
@@ -425,6 +417,7 @@ export default {
       const hardMode = Boolean(body?.input?.hard_mode);
       const variant = body?.input?.output_variant as string | undefined;
 
+      // Phase 3.5: smart defaults
       const flirtMode = sanitizeEnum(body?.input?.flirt_mode, ALLOWED_FLIRT_MODE) ?? "off";
       const datingStage = sanitizeEnum(body?.input?.dating_stage, ALLOWED_DATING_STAGE);
       const datingVibe = sanitizeEnum(body?.input?.dating_vibe, ALLOWED_DATING_VIBE);
@@ -440,7 +433,7 @@ export default {
           requestLatencyMs: nowMs() - tReq0,
           safetyBlocked: true,
         });
-        return await jsonResponse(
+        return jsonResponse(
           blocked(
             "SAFETY_BLOCK",
             "Input was blocked by minimal safety gate.",
@@ -450,6 +443,9 @@ export default {
           200
         );
       }
+
+      // Phase 3.5.5: soft redirects (only pass *_redirect hints into prompt)
+      const safetyHints = (safety.reasons ?? []).filter((r) => r.endsWith("_redirect"));
 
       try {
         const out = await generateSuggestionsWithGroq({
@@ -461,6 +457,7 @@ export default {
           flirtMode,
           datingStage,
           datingVibe,
+          safetyHints,
         });
 
         const baseMeta = buildBaseMeta({
@@ -472,12 +469,12 @@ export default {
           requestLatencyMs: nowMs() - tReq0,
         });
 
-        return await jsonResponse(
+        return jsonResponse(
           ok(
             {
               mode: "REPLY",
-              voice_match_score: 78,
-              risk: { level: "yellow", score: 45, reasons: ["Mock risk: medium (receiver stressed)"] },
+              voice_match_score: 80,
+              risk: { level: "green", score: 20, reasons: ["Mock risk: low"] },
               suggestions: out.suggestions,
             },
             {
@@ -501,31 +498,17 @@ export default {
           outputVariant: variant,
           requestLatencyMs: nowMs() - tReq0,
         });
-        return await jsonResponse(
-          err(
-            "LLM_ERROR",
-            "LLM generation failed",
-            { message: String(e?.message ?? e) },
-            {
-              ...baseMeta,
-              model: modelForEnv(safeEnv),
-              llm_error: String(e?.message ?? e),
-            }
-          ),
-          200
-        );
+        return jsonResponse(err("INTERNAL_ERROR", "Failed to generate suggestions", String(e?.message ?? e), baseMeta), 500);
       }
     }
 
+    // unknown route
     const baseMeta = buildBaseMeta({
       env: safeEnv,
       requestPath: url.pathname,
       mode: "UNKNOWN",
       requestLatencyMs: nowMs() - tReq0,
     });
-    return await jsonResponse(err("NOT_FOUND", "Route not found", { path: url.pathname }, baseMeta), 404);
+    return jsonResponse(err("NOT_FOUND", "Route not found", { path: url.pathname }, baseMeta), 404);
   },
 };
-
-// Dev guard (import side effects)
-validateEnvelopeContract;

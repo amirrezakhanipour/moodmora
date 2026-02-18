@@ -4,6 +4,9 @@
     "context": "They’re upset about me changing plans late.",
     "output_variant": "FINGLISH",
     "hard_mode": false,
-    "contact_id": "contact_demo_01"
+    "contact_id": "contact_demo_01",
+    "flirt_mode": "off",
+    "dating_stage": "early_chat",
+    "dating_vibe": "friendly"
   }
 }

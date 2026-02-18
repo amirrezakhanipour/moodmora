@@ -16,16 +16,28 @@ EnvelopeStatus _parseStatus(String s) {
 }
 
 class EnvelopeMeta {
-  EnvelopeMeta({required this.contractVersion});
+  EnvelopeMeta({
+    required this.contractVersion,
+    this.requestId,
+  });
 
   final String contractVersion;
+
+  /// Optional — backend may or may not include it.
+  /// (Some versions place request_id under meta, some don't send it at all.)
+  final String? requestId;
 
   factory EnvelopeMeta.fromJson(Map<String, dynamic> json) {
     final v = json['contract_version'];
     if (v is! String) {
       throw FormatException('meta.contract_version missing');
     }
-    return EnvelopeMeta(contractVersion: v);
+
+    final rid = json['request_id'];
+    return EnvelopeMeta(
+      contractVersion: v,
+      requestId: rid is String ? rid : null,
+    );
   }
 }
 
@@ -61,8 +73,17 @@ class Envelope<T> {
   });
 
   final EnvelopeStatus status;
+
+  /// Keep this field for app compatibility, but make parsing tolerant:
+  /// - prefer top-level request_id if present
+  /// - else meta.request_id if present
+  /// - else fallback to 'n/a'
   final String requestId;
+
+  /// Backend currently doesn't send timestamp_ms.
+  /// Keep this for app compatibility; fallback to now() if missing.
   final int timestampMs;
+
   final EnvelopeMeta meta;
   final T? data;
   final EnvelopeError? error;
@@ -72,20 +93,12 @@ class Envelope<T> {
     required FromJson<T> fromJson,
   }) {
     final statusStr = json['status'];
-    final reqId = json['request_id'];
-    final ts = json['timestamp_ms'];
     final metaJson = json['meta'];
     final dataJson = json['data'];
     final errJson = json['error'];
 
     if (statusStr is! String) {
       throw FormatException('status missing');
-    }
-    if (reqId is! String) {
-      throw FormatException('request_id missing');
-    }
-    if (ts is! int) {
-      throw FormatException('timestamp_ms missing');
     }
     if (metaJson is! Map<String, dynamic>) {
       throw FormatException('meta missing');
@@ -94,27 +107,36 @@ class Envelope<T> {
     final status = _parseStatus(statusStr);
     final meta = EnvelopeMeta.fromJson(metaJson);
 
-    final T? data = (dataJson is Map<String, dynamic>)
-        ? fromJson(dataJson)
-        : null;
-    final EnvelopeError? error = (errJson is Map<String, dynamic>)
-        ? EnvelopeError.fromJson(errJson)
-        : null;
+    // Optional fields (tolerant parsing)
+    final topReqId = json['request_id'];
+    final ts = json['timestamp_ms'];
 
-    // Minimal invariants
+    final requestId = (topReqId is String && topReqId.isNotEmpty)
+        ? topReqId
+        : (meta.requestId != null && meta.requestId!.isNotEmpty)
+            ? meta.requestId!
+            : 'n/a';
+
+    final timestampMs =
+        (ts is int) ? ts : DateTime.now().millisecondsSinceEpoch;
+
+    final T? data =
+        (dataJson is Map<String, dynamic>) ? fromJson(dataJson) : null;
+
+    final EnvelopeError? error =
+        (errJson is Map<String, dynamic>) ? EnvelopeError.fromJson(errJson) : null;
+
+    // Minimal invariants (less strict to be backward/forward compatible)
     if (status == EnvelopeStatus.ok && data == null) {
       throw FormatException('ok envelope must include data');
     }
-    if (status != EnvelopeStatus.ok && error == null) {
-      // some endpoints may return error=null for blocked; adjust later if needed
-      // For now, we enforce presence for non-ok
-      throw FormatException('non-ok envelope must include error');
-    }
+    // blocked/error may sometimes omit error; don't hard-fail
+    // if (status != EnvelopeStatus.ok && error == null) { ... }
 
     return Envelope<T>(
       status: status,
-      requestId: reqId,
-      timestampMs: ts,
+      requestId: requestId,
+      timestampMs: timestampMs,
       meta: meta,
       data: data,
       error: error,

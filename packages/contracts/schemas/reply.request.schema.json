@@ -15,7 +15,14 @@
         "context": { "type": "string" },
         "output_variant": { "type": "string", "enum": ["AUTO", "FA_SCRIPT", "FINGLISH", "EN"] },
         "hard_mode": { "type": "boolean" },
-        "contact_id": { "type": "string" }
+        "contact_id": { "type": "string" },
+
+        "flirt_mode": { "type": "string", "enum": ["off", "subtle", "playful", "direct"] },
+        "dating_stage": {
+          "type": "string",
+          "enum": ["first_msg", "early_chat", "planning", "reconnect", "post_date"]
+        },
+        "dating_vibe": { "type": "string", "enum": ["fun", "classy", "direct", "shy", "friendly"] }
       }
     }
   }

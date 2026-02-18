@@ -6,9 +6,11 @@ import 'package:http/http.dart' as http;
 import '../models/envelope.dart';
 
 class ApiClient {
+  /// Default timeout ro 15s kardim چون LLM call gahi bishtar az 5s tool mikashe.
+  /// (ghabl: 5s)
   ApiClient({required this.baseUrl, http.Client? client, Duration? timeout})
-    : _client = client ?? http.Client(),
-      _timeout = timeout ?? const Duration(seconds: 5);
+      : _client = client ?? http.Client(),
+        _timeout = timeout ?? const Duration(seconds: 15);
 
   final String baseUrl;
   final http.Client _client;
@@ -23,7 +25,15 @@ class ApiClient {
       return _handle(res, method: 'GET', path: path);
     } on TimeoutException catch (e) {
       throw ApiException(
-        message: 'Timeout after ${_timeout.inSeconds}s',
+        message:
+            'Timeout after ${_timeout.inSeconds}s (GET $path). Server may be slow/busy.',
+        statusCode: 0,
+        path: 'GET $path',
+        rawBody: e.toString(),
+      );
+    } catch (e) {
+      throw ApiException(
+        message: 'Request failed (GET $path)',
         statusCode: 0,
         path: 'GET $path',
         rawBody: e.toString(),
@@ -48,7 +58,15 @@ class ApiClient {
       return _handle(res, method: 'POST', path: path);
     } on TimeoutException catch (e) {
       throw ApiException(
-        message: 'Timeout after ${_timeout.inSeconds}s',
+        message:
+            'Timeout after ${_timeout.inSeconds}s (POST $path). Server may be slow/busy.',
+        statusCode: 0,
+        path: 'POST $path',
+        rawBody: e.toString(),
+      );
+    } catch (e) {
+      throw ApiException(
+        message: 'Request failed (POST $path)',
         statusCode: 0,
         path: 'POST $path',
         rawBody: e.toString(),
@@ -114,9 +132,8 @@ class ApiClient {
         final decoded = jsonDecode(raw);
         if (decoded is Map<String, dynamic>) {
           final errObj = decoded['error'];
-          final msg = (errObj is Map<String, dynamic>)
-              ? errObj['message']
-              : null;
+          final msg =
+              (errObj is Map<String, dynamic>) ? errObj['message'] : null;
           if (msg is String && msg.isNotEmpty) {
             throw ApiException(
               message: msg,

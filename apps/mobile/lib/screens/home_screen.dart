@@ -35,46 +35,52 @@ class _HomeScreenState extends State<HomeScreen> {
     final chosen = await showModalBottomSheet(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true, // ✅ allow taller + scroll behavior
       builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                auto ? 'Quick dating setup' : 'Dating presets',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Pick one vibe. You can change it anytime.',
-                style: TextStyle(color: Theme.of(ctx).colorScheme.onSurfaceVariant),
-              ),
-              const SizedBox(height: 12),
-
-              for (final p in presets) ...[
-                Card(
-                  child: ListTile(
-                    title: Text(p.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text(p.description),
-                    trailing: (selected?.id == p.id)
-                        ? const Icon(Icons.check_circle)
-                        : const Icon(Icons.circle_outlined),
-                    onTap: () => Navigator.of(ctx).pop(p),
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            // ✅ prevent RenderFlex overflow in small heights (tests, small screens)
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    auto ? 'Quick dating setup' : 'Dating presets',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
-                ),
-                const SizedBox(height: 8),
-              ],
+                  const SizedBox(height: 6),
+                  Text(
+                    'Pick one vibe. You can change it anytime.',
+                    style: TextStyle(color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 12),
 
-              if (selected != null) ...[
-                const SizedBox(height: 4),
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop('CLEAR'),
-                  child: const Text('Clear preset'),
-                ),
-              ],
-            ],
+                  for (final p in presets) ...[
+                    Card(
+                      child: ListTile(
+                        title: Text(p.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: Text(p.description),
+                        trailing: (selected?.id == p.id)
+                            ? const Icon(Icons.check_circle)
+                            : const Icon(Icons.circle_outlined),
+                        onTap: () => Navigator.of(ctx).pop(p),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+
+                  if (selected != null) ...[
+                    const SizedBox(height: 4),
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop('CLEAR'),
+                      child: const Text('Clear preset'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
         );
       },

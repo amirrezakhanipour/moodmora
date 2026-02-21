@@ -24,7 +24,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    // Micro-onboarding V1: auto-prompt once per app run (in-memory)
     if (AppConfig.datingPresetsEnabled &&
         AppConfig.datingAddonEnabled &&
         !PresetStore.didAutoPrompt) {
@@ -36,8 +35,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openPresetsSheet({bool auto = false}) async {
-    if (!AppConfig.datingPresetsEnabled || !AppConfig.datingAddonEnabled)
+    if (!AppConfig.datingPresetsEnabled || !AppConfig.datingAddonEnabled) {
       return;
+    }
 
     final presets = PresetStore.presets();
     final selected = PresetStore.selected;
@@ -134,7 +134,6 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
 
     return Scaffold(
-      // No AppBar here; Improve/Reply already have their own Scaffold/AppBar.
       body: IndexedStack(
         index: _index.clamp(0, pages.length - 1),
         children: pages,

@@ -105,9 +105,9 @@ class _ImproveScreenState extends State<ImproveScreen> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (ctx) {
+      builder: (sheetCtx) {
         return StatefulBuilder(
-          builder: (ctx, setSheet) {
+          builder: (sheetCtx, setSheet) {
             Future<void> pick() async {
               final res = await ScreenshotOcrService.pickAndExtract(
                 maxImages: 3,
@@ -129,16 +129,16 @@ class _ImproveScreenState extends State<ImproveScreen> {
             Future<void> editText() async {
               final controller = TextEditingController(text: _ctxText);
               final saved = await showModalBottomSheet<bool>(
-                context: ctx,
+                context: sheetCtx,
                 showDragHandle: true,
                 isScrollControlled: true,
-                builder: (_) {
+                builder: (editCtx) {
                   return Padding(
                     padding: EdgeInsets.only(
                       left: 16,
                       right: 16,
                       top: 12,
-                      bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+                      bottom: MediaQuery.of(editCtx).viewInsets.bottom + 16,
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -162,7 +162,7 @@ class _ImproveScreenState extends State<ImproveScreen> {
                         ),
                         const SizedBox(height: 10),
                         FilledButton(
-                          onPressed: () => Navigator.of(ctx).pop(true),
+                          onPressed: () => Navigator.of(editCtx).pop(true),
                           child: const Text('Save'),
                         ),
                         const SizedBox(height: 8),
@@ -234,8 +234,9 @@ class _ImproveScreenState extends State<ImproveScreen> {
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: _ctxImages.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 8),
-                          itemBuilder: (_, i) {
+                          separatorBuilder: (context, index) =>
+                              const SizedBox(width: 8),
+                          itemBuilder: (context, i) {
                             final img = _ctxImages[i];
                             return Stack(
                               children: [
@@ -256,14 +257,18 @@ class _ImproveScreenState extends State<ImproveScreen> {
                                       setState(() {
                                         _ctxImages = List.of(_ctxImages)
                                           ..removeAt(i);
-                                        if (_ctxImages.isEmpty) _ctxText = '';
+                                        if (_ctxImages.isEmpty) {
+                                          _ctxText = '';
+                                        }
                                       });
                                       setSheet(() {});
                                     },
                                     child: Container(
                                       padding: const EdgeInsets.all(4),
                                       decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.6),
+                                        color: Colors.black.withAlpha(
+                                          (0.6 * 255).round(),
+                                        ),
                                         shape: BoxShape.circle,
                                       ),
                                       child: const Icon(
@@ -292,14 +297,18 @@ class _ImproveScreenState extends State<ImproveScreen> {
                       Text(
                         'Preview (optional)',
                         style: TextStyle(
-                          color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                          color: Theme.of(
+                            sheetCtx,
+                          ).colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          border: Border.all(color: Theme.of(ctx).dividerColor),
+                          border: Border.all(
+                            color: Theme.of(sheetCtx).dividerColor,
+                          ),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
@@ -510,15 +519,15 @@ class _ImproveScreenState extends State<ImproveScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) {
+      builder: (sheetCtx) {
         return StatefulBuilder(
-          builder: (ctx, setSheetState) {
+          builder: (sheetCtx, setSheetState) {
             return Padding(
               padding: EdgeInsets.only(
                 left: 16,
                 right: 16,
                 top: 12,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+                bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 16,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -529,7 +538,6 @@ class _ImproveScreenState extends State<ImproveScreen> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 12),
-
                   const Text(
                     'Stage',
                     style: TextStyle(fontWeight: FontWeight.w600),
@@ -565,7 +573,6 @@ class _ImproveScreenState extends State<ImproveScreen> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 12),
                   const Text(
                     'Vibe',
@@ -594,7 +601,6 @@ class _ImproveScreenState extends State<ImproveScreen> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 12),
                   const Text(
                     'One detail about them (optional)',
@@ -610,14 +616,13 @@ class _ImproveScreenState extends State<ImproveScreen> {
                     ),
                     maxLines: 2,
                   ),
-
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
                         child: FilledButton(
                           onPressed: () {
-                            Navigator.of(ctx).pop({
+                            Navigator.of(sheetCtx).pop({
                               'stage': stage,
                               'vibe': vibe,
                               'detail': detailCtrl.text.trim(),
@@ -702,7 +707,6 @@ class _ImproveScreenState extends State<ImproveScreen> {
         children: [
           _InfoBar(text: 'API: ${AppConfig.apiBaseUrl}'),
           const SizedBox(height: 12),
-
           if (_ctxText.trim().isNotEmpty) ...[
             Card(
               child: Padding(
@@ -727,13 +731,11 @@ class _ImproveScreenState extends State<ImproveScreen> {
             ),
             const SizedBox(height: 12),
           ],
-
           const Text(
             'Paste your draft message',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
-
           TextField(
             controller: _controller,
             maxLines: 6,
@@ -743,12 +745,9 @@ class _ImproveScreenState extends State<ImproveScreen> {
             ),
             onChanged: (_) => setState(() {}),
           ),
-
           _starterTemplatesRow(),
           _starterCTA(),
-
           const SizedBox(height: 12),
-
           Row(
             children: [
               Expanded(
@@ -783,11 +782,8 @@ class _ImproveScreenState extends State<ImproveScreen> {
               ),
             ],
           ),
-
           _datingChipRow(),
-
           const SizedBox(height: 12),
-
           Row(
             children: [
               Expanded(
@@ -811,14 +807,11 @@ class _ImproveScreenState extends State<ImproveScreen> {
               ),
             ],
           ),
-
           const SizedBox(height: 12),
-
           if (_error != null) ...[
             _ErrorCard(message: _error!, onRetry: _canSubmit ? _submit : null),
             const SizedBox(height: 12),
           ],
-
           if (_result != null) ...[
             _RiskCard(
               level: _result!.risk.level,

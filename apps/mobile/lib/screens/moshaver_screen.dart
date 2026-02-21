@@ -34,7 +34,7 @@ class MoshaverScreen extends StatefulWidget {
 
 class _MoshaverScreenState extends State<MoshaverScreen>
     with SingleTickerProviderStateMixin {
-  // ✅ This is TRUE in widget tests.
+  // This is TRUE in widget tests.
   static const bool _isTest = bool.fromEnvironment('FLUTTER_TEST');
 
   final _goalCtrl = TextEditingController();
@@ -71,7 +71,7 @@ class _MoshaverScreenState extends State<MoshaverScreen>
       duration: const Duration(milliseconds: 1600),
     );
 
-    // ✅ Never start infinite animation during widget tests (pumpAndSettle will timeout)
+    // Never start infinite animation during widget tests (pumpAndSettle can timeout)
     if (!_isTest) {
       _idleAnim.repeat(reverse: true);
     }
@@ -111,8 +111,9 @@ class _MoshaverScreenState extends State<MoshaverScreen>
     _setChar(s);
     Future.delayed(d, () {
       if (!mounted) return;
-      if (_char == s)
+      if (_char == s) {
         _setChar(_sending ? _CharState.thinking : _CharState.idle);
+      }
     });
   }
 
@@ -171,7 +172,7 @@ class _MoshaverScreenState extends State<MoshaverScreen>
     final ok = await showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
-      builder: (ctx) {
+      builder: (sheetCtx) {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -193,14 +194,14 @@ class _MoshaverScreenState extends State<MoshaverScreen>
                   children: [
                     Expanded(
                       child: FilledButton(
-                        onPressed: () => Navigator.of(ctx).pop(true),
+                        onPressed: () => Navigator.of(sheetCtx).pop(true),
                         child: const Text('Confirm'),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => Navigator.of(ctx).pop(false),
+                        onPressed: () => Navigator.of(sheetCtx).pop(false),
                         child: const Text('Cancel'),
                       ),
                     ),
@@ -221,9 +222,9 @@ class _MoshaverScreenState extends State<MoshaverScreen>
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (ctx) {
+      builder: (sheetCtx) {
         return StatefulBuilder(
-          builder: (ctx, setSheet) {
+          builder: (sheetCtx, setSheet) {
             Future<void> pick() async {
               final res = await ScreenshotOcrService.pickAndExtract(
                 maxImages: 3,
@@ -252,16 +253,16 @@ class _MoshaverScreenState extends State<MoshaverScreen>
             Future<void> editText() async {
               final controller = TextEditingController(text: _ctxText);
               final saved = await showModalBottomSheet<bool>(
-                context: ctx,
+                context: sheetCtx,
                 showDragHandle: true,
                 isScrollControlled: true,
-                builder: (_) {
+                builder: (editCtx) {
                   return Padding(
                     padding: EdgeInsets.only(
                       left: 16,
                       right: 16,
                       top: 12,
-                      bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+                      bottom: MediaQuery.of(editCtx).viewInsets.bottom + 16,
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -285,7 +286,7 @@ class _MoshaverScreenState extends State<MoshaverScreen>
                         ),
                         const SizedBox(height: 10),
                         FilledButton(
-                          onPressed: () => Navigator.of(ctx).pop(true),
+                          onPressed: () => Navigator.of(editCtx).pop(true),
                           child: const Text('Save'),
                         ),
                         const SizedBox(height: 8),
@@ -360,8 +361,9 @@ class _MoshaverScreenState extends State<MoshaverScreen>
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: _ctxImages.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 8),
-                          itemBuilder: (_, i) {
+                          separatorBuilder: (context, index) =>
+                              const SizedBox(width: 8),
+                          itemBuilder: (context, i) {
                             final img = _ctxImages[i];
                             return Stack(
                               children: [
@@ -382,14 +384,18 @@ class _MoshaverScreenState extends State<MoshaverScreen>
                                       setState(() {
                                         _ctxImages = List.of(_ctxImages)
                                           ..removeAt(i);
-                                        if (_ctxImages.isEmpty) _ctxText = '';
+                                        if (_ctxImages.isEmpty) {
+                                          _ctxText = '';
+                                        }
                                       });
                                       setSheet(() {});
                                     },
                                     child: Container(
                                       padding: const EdgeInsets.all(4),
                                       decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.6),
+                                        color: Colors.black.withAlpha(
+                                          (0.6 * 255).round(),
+                                        ),
                                         shape: BoxShape.circle,
                                       ),
                                       child: const Icon(
@@ -418,14 +424,18 @@ class _MoshaverScreenState extends State<MoshaverScreen>
                       Text(
                         'Preview (optional)',
                         style: TextStyle(
-                          color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                          color: Theme.of(
+                            sheetCtx,
+                          ).colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          border: Border.all(color: Theme.of(ctx).dividerColor),
+                          border: Border.all(
+                            color: Theme.of(sheetCtx).dividerColor,
+                          ),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
@@ -510,16 +520,17 @@ class _MoshaverScreenState extends State<MoshaverScreen>
         final msg = (env['error'] is Map)
             ? (env['error']['message']?.toString() ?? 'Blocked')
             : 'Blocked';
-        setState(
-          () => _messages.add(_ChatMsg(_ChatRole.assistant, 'Blocked: $msg')),
-        );
+        setState(() {
+          _messages.add(_ChatMsg(_ChatRole.assistant, 'Blocked: $msg'));
+        });
         _setChar(_CharState.protective);
         return;
       }
 
       final data = env['data'];
-      if (data is! Map)
+      if (data is! Map) {
         throw Exception('Invalid coach response (missing data).');
+      }
 
       final assistant = data['assistant_message']?.toString().trim() ?? '';
       final bestNext = data['best_next_message']?.toString().trim() ?? '';
@@ -535,12 +546,13 @@ class _MoshaverScreenState extends State<MoshaverScreen>
         buf.writeln('2) ${steps[1]}');
         buf.writeln('3) ${steps[2]}');
       }
-      if (bestNext.isNotEmpty) buf.writeln('\nBest next message:\n$bestNext');
+      if (bestNext.isNotEmpty) {
+        buf.writeln('\nBest next message:\n$bestNext');
+      }
 
-      setState(
-        () =>
-            _messages.add(_ChatMsg(_ChatRole.assistant, buf.toString().trim())),
-      );
+      setState(() {
+        _messages.add(_ChatMsg(_ChatRole.assistant, buf.toString().trim()));
+      });
 
       final riskChar = _mapRiskToChar(data);
       if (riskChar == _CharState.concerned) {
@@ -549,17 +561,17 @@ class _MoshaverScreenState extends State<MoshaverScreen>
         _flashChar(_CharState.happy);
       }
     } catch (e) {
-      setState(
-        () => _messages.add(
-          _ChatMsg(_ChatRole.assistant, 'Error: ${e.toString()}'),
-        ),
-      );
+      setState(() {
+        _messages.add(_ChatMsg(_ChatRole.assistant, 'Error: ${e.toString()}'));
+      });
       _setChar(_CharState.oops);
       _flashChar(_CharState.oops, d: const Duration(milliseconds: 1600));
     } finally {
       if (mounted) {
         setState(() => _sending = false);
-        if (_char == _CharState.thinking) _setChar(_CharState.idle);
+        if (_char == _CharState.thinking) {
+          _setChar(_CharState.idle);
+        }
       }
     }
   }
@@ -606,7 +618,7 @@ class _MoshaverScreenState extends State<MoshaverScreen>
     final cs = Theme.of(context).colorScheme;
     final label = _charLabel(_char);
 
-    // In tests animation doesn't run; value stays at 0 → scale becomes 1.0 (good)
+    // In tests animation doesn't run; value stays at 0 => scale becomes 1.0
     final scale = (_char == _CharState.idle)
         ? (1.0 + (_idleAnim.value * 0.04))
         : 1.0;
@@ -628,7 +640,7 @@ class _MoshaverScreenState extends State<MoshaverScreen>
     final text = _sending
         ? 'Dar hal-e fekr...'
         : (_composerCtrl.text.trim().isNotEmpty
-              ? 'Begu chi داری minevisi...'
+              ? 'Begu chi dari minevisi...'
               : 'Man inja-am. Har chi mikhay begu.');
 
     return Container(
@@ -637,7 +649,9 @@ class _MoshaverScreenState extends State<MoshaverScreen>
         color: cs.surfaceContainerHighest,
         border: Border(
           bottom: BorderSide(
-            color: Theme.of(context).dividerColor.withOpacity(0.4),
+            color: Theme.of(
+              context,
+            ).dividerColor.withAlpha((0.4 * 255).round()),
           ),
         ),
       ),
@@ -645,7 +659,7 @@ class _MoshaverScreenState extends State<MoshaverScreen>
         children: [
           AnimatedBuilder(
             animation: _idleAnim,
-            builder: (ctx, _) {
+            builder: (context, child) {
               return Transform.scale(
                 scale: scale,
                 child: CircleAvatar(
@@ -681,18 +695,22 @@ class _MoshaverScreenState extends State<MoshaverScreen>
 
     if (!_contextExpanded) {
       final pieces = <String>[];
-      if (goal.isNotEmpty)
+
+      if (goal.isNotEmpty) {
         pieces.add(
           'Goal: ${goal.length > 40 ? '${goal.substring(0, 40)}…' : goal}',
         );
-      if (situation.isNotEmpty)
+      }
+      if (situation.isNotEmpty) {
         pieces.add(
           'Situation: ${situation.length > 40 ? '${situation.substring(0, 40)}…' : situation}',
         );
-      if (_ctxText.trim().isNotEmpty)
+      }
+      if (_ctxText.trim().isNotEmpty) {
         pieces.add(
           'Context: ${_ctxImages.length} screenshot${_ctxImages.length == 1 ? '' : 's'}',
         );
+      }
       if (pieces.isEmpty) pieces.add('Tap to add goal/situation');
 
       return InkWell(
@@ -703,7 +721,9 @@ class _MoshaverScreenState extends State<MoshaverScreen>
             color: Theme.of(context).colorScheme.surface,
             border: Border(
               bottom: BorderSide(
-                color: Theme.of(context).dividerColor.withOpacity(0.4),
+                color: Theme.of(
+                  context,
+                ).dividerColor.withAlpha((0.4 * 255).round()),
               ),
             ),
           ),
@@ -822,7 +842,9 @@ class _MoshaverScreenState extends State<MoshaverScreen>
             borderRadius: BorderRadius.circular(14),
             border: m.role == _ChatRole.system
                 ? Border.all(
-                    color: Theme.of(context).dividerColor.withOpacity(0.5),
+                    color: Theme.of(
+                      context,
+                    ).dividerColor.withAlpha((0.5 * 255).round()),
                   )
                 : null,
           ),
@@ -918,7 +940,7 @@ class _MoshaverScreenState extends State<MoshaverScreen>
             child: ListView.builder(
               padding: const EdgeInsets.only(top: 4, bottom: 4),
               itemCount: _messages.length,
-              itemBuilder: (_, i) => _bubble(_messages[i]),
+              itemBuilder: (context, i) => _bubble(_messages[i]),
             ),
           ),
           _composer(),

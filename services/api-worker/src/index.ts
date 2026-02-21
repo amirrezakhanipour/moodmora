@@ -188,8 +188,6 @@ async function generateSuggestionsWithGroq(args: {
 
   const count = clampSuggestionCount(args.hardMode);
 
-  // Inject screenshot context into the existing prompt_builder via inputText augmentation (low-risk).
-  // If empty/undefined, behavior remains unchanged.
   const inputTextWithContext =
     args.contextExtractedText && args.contextExtractedText.trim()
       ? [
@@ -297,11 +295,9 @@ function safeString(x: unknown): string | undefined {
 }
 
 function tryExtractJsonObject(text: string): string {
-  // Try raw first
   const t = text.trim();
   if (t.startsWith("{") && t.endsWith("}")) return t;
 
-  // Fallback: extract first {...} block
   const m = t.match(/\{[\s\S]*\}/);
   return m ? m[0] : t;
 }
@@ -319,7 +315,13 @@ function parseCoachData(raw: string): CoachData {
   const best_next_message = safeString(obj?.best_next_message);
 
   const steps = Array.isArray(obj?.action_steps) ? obj.action_steps : null;
-  const action_steps: string[] = steps ? steps.map((s: any) => (typeof s === "string" ? s : "")).filter((s) => s.trim()) : [];
+
+  // ✅ FIX: filter param typed to avoid TS7006 (implicit any)
+  const action_steps: string[] = steps
+    ? steps
+        .map((s: any) => (typeof s === "string" ? s : ""))
+        .filter((s: string) => s.trim())
+    : [];
 
   if (!assistant_message || !best_next_message) throw new Error("COACH_MISSING_REQUIRED_FIELDS");
   if (action_steps.length !== 3) throw new Error("COACH_ACTION_STEPS_INVALID");
@@ -335,7 +337,6 @@ function parseCoachData(raw: string): CoachData {
   if (bq) data.best_question = bq;
   if (sl) data.safety_line = sl;
 
-  // risk (optional)
   if (obj?.risk && typeof obj.risk === "object") {
     const level = safeString(obj.risk.level) as any;
     const score = typeof obj.risk.score === "number" ? obj.risk.score : undefined;
@@ -345,7 +346,6 @@ function parseCoachData(raw: string): CoachData {
     }
   }
 
-  // ui_hints (optional)
   if (obj?.ui_hints && typeof obj.ui_hints === "object") {
     const h: CoachUiHints = {};
     if (typeof obj.ui_hints.collapse_context_card === "boolean") h.collapse_context_card = obj.ui_hints.collapse_context_card;
@@ -356,9 +356,7 @@ function parseCoachData(raw: string): CoachData {
   return data;
 }
 
-function buildCoachMessages(args: {
-  req: CoachReq;
-}): GroqMessage[] {
+function buildCoachMessages(args: { req: CoachReq }): GroqMessage[] {
   const v = args.req.output_variant ?? "AUTO";
   const langHint =
     v === "EN"
@@ -404,9 +402,7 @@ function buildCoachMessages(args: {
     parts.push(`CHAT HISTORY (recent):\n${transcript}`);
   }
 
-  if (ctx) {
-    parts.push(["CONTEXT (extracted from screenshots):", ctx].join("\n"));
-  }
+  if (ctx) parts.push(["CONTEXT (extracted from screenshots):", ctx].join("\n"));
 
   parts.push(`USER MESSAGE:\n${args.req.user_message}`);
 
@@ -421,11 +417,7 @@ function buildCoachMessages(args: {
 async function generateCoachWithGroq(args: {
   env?: WorkerEnv;
   req: CoachReq;
-}): Promise<{
-  data: CoachData;
-  usage: unknown;
-  repair_attempted: boolean;
-}> {
+}): Promise<{ data: CoachData; usage: unknown; repair_attempted: boolean }> {
   const apiKey = args.env?.GROQ_API_KEY?.trim();
   if (!apiKey) throw new Error("MISSING_GROQ_API_KEY");
 
@@ -473,7 +465,6 @@ export default {
 
     const url = new URL(request.url);
 
-    // health
     if (request.method === "GET" && url.pathname === "/health") {
       const baseMeta = buildBaseMeta({
         env: safeEnv,
@@ -484,7 +475,6 @@ export default {
       return jsonResponse(ok({ service: "api-worker", ok: true }, baseMeta), 200);
     }
 
-    // contract validation endpoint (dev-only convenience)
     if (request.method === "POST" && url.pathname === "/v1/contracts/validate") {
       try {
         const body = await parseJsonBody(request);
@@ -509,7 +499,6 @@ export default {
       }
     }
 
-    // COACH (Phase 3.6) — feature flagged
     if (request.method === "POST" && url.pathname === "/v1/coach/message") {
       if (!isEnabled(safeEnv.FEATURE_COACH)) {
         const baseMeta = buildBaseMeta({
@@ -563,12 +552,7 @@ export default {
         hard_mode_requested: Boolean(body?.hard_mode_requested),
       };
 
-      const combinedForSafety = [
-        req.goal_text ?? "",
-        req.situation_text ?? "",
-        req.user_message,
-        req.context_extracted_text ?? "",
-      ]
+      const combinedForSafety = [req.goal_text ?? "", req.situation_text ?? "", req.user_message, req.context_extracted_text ?? ""]
         .join("\n")
         .trim();
 
@@ -584,12 +568,7 @@ export default {
           safetyBlocked: true,
         });
         return jsonResponse(
-          blocked(
-            "SAFETY_BLOCK",
-            "Input was blocked by minimal safety gate.",
-            { reasons: safety.reasons },
-            { ...baseMeta, safety: safety.reasons }
-          ),
+          blocked("SAFETY_BLOCK", "Input was blocked by minimal safety gate.", { reasons: safety.reasons }, { ...baseMeta, safety: safety.reasons }),
           200
         );
       }
@@ -597,12 +576,12 @@ export default {
       try {
         const out = await generateCoachWithGroq({ env: safeEnv, req });
 
-        // Hard-mode enforcement: if requested, require best_question + safety_line
         if (req.hard_mode_requested) {
           if (!out.data.best_question || !out.data.safety_line) {
-            // don't fail request; provide safe fallback
             out.data.best_question = out.data.best_question ?? "Mikhay aheste aheste behem begi alan chi hess mikoni?";
-            out.data.safety_line = out.data.safety_line ?? "Agar alan hess mikoni to khatar hasti, lotfan az yek nafar moteber komak begir ya ba emergency tamas begir.";
+            out.data.safety_line =
+              out.data.safety_line ??
+              "Agar alan hess mikoni to khatar hasti, lotfan az yek nafar moteber komak begir ya ba emergency tamas begir.";
           }
         }
 
@@ -667,7 +646,6 @@ export default {
       const variant = body?.input?.output_variant as string | undefined;
       const contextExtractedText = typeof body?.input?.context_extracted_text === "string" ? body.input.context_extracted_text : undefined;
 
-      // Phase 3.5: smart defaults
       const flirtMode = sanitizeEnum(body?.input?.flirt_mode, ALLOWED_FLIRT_MODE) ?? "off";
       const datingStage = sanitizeEnum(body?.input?.dating_stage, ALLOWED_DATING_STAGE);
       const datingVibe = sanitizeEnum(body?.input?.dating_vibe, ALLOWED_DATING_VIBE);
@@ -684,17 +662,11 @@ export default {
           safetyBlocked: true,
         });
         return jsonResponse(
-          blocked(
-            "SAFETY_BLOCK",
-            "Input was blocked by minimal safety gate.",
-            { reasons: safety.reasons },
-            { ...baseMeta, safety: safety.reasons }
-          ),
+          blocked("SAFETY_BLOCK", "Input was blocked by minimal safety gate.", { reasons: safety.reasons }, { ...baseMeta, safety: safety.reasons }),
           200
         );
       }
 
-      // Phase 3.5.5: soft redirects (only pass *_redirect hints into prompt)
       const safetyHints = (safety.reasons ?? []).filter((r) => r.endsWith("_redirect"));
 
       try {
@@ -726,7 +698,6 @@ export default {
               mode: "IMPROVE",
               voice_match_score: 80,
               risk: { level: "green", score: 20, reasons: ["Mock risk: low"] },
-              // NOTE: context_summary is optional; add later when prompt returns it
               suggestions: out.suggestions,
             },
             {
@@ -784,7 +755,6 @@ export default {
       const variant = body?.input?.output_variant as string | undefined;
       const contextExtractedText = typeof body?.input?.context_extracted_text === "string" ? body.input.context_extracted_text : undefined;
 
-      // Phase 3.5: smart defaults
       const flirtMode = sanitizeEnum(body?.input?.flirt_mode, ALLOWED_FLIRT_MODE) ?? "off";
       const datingStage = sanitizeEnum(body?.input?.dating_stage, ALLOWED_DATING_STAGE);
       const datingVibe = sanitizeEnum(body?.input?.dating_vibe, ALLOWED_DATING_VIBE);
@@ -801,17 +771,11 @@ export default {
           safetyBlocked: true,
         });
         return jsonResponse(
-          blocked(
-            "SAFETY_BLOCK",
-            "Input was blocked by minimal safety gate.",
-            { reasons: safety.reasons },
-            { ...baseMeta, safety: safety.reasons }
-          ),
+          blocked("SAFETY_BLOCK", "Input was blocked by minimal safety gate.", { reasons: safety.reasons }, { ...baseMeta, safety: safety.reasons }),
           200
         );
       }
 
-      // Phase 3.5.5: soft redirects (only pass *_redirect hints into prompt)
       const safetyHints = (safety.reasons ?? []).filter((r) => r.endsWith("_redirect"));
 
       try {
@@ -843,7 +807,6 @@ export default {
               mode: "REPLY",
               voice_match_score: 80,
               risk: { level: "green", score: 20, reasons: ["Mock risk: low"] },
-              // NOTE: context_summary is optional; add later when prompt returns it
               suggestions: out.suggestions,
             },
             {
@@ -871,7 +834,6 @@ export default {
       }
     }
 
-    // unknown route
     const baseMeta = buildBaseMeta({
       env: safeEnv,
       requestPath: url.pathname,

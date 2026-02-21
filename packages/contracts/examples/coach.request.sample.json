@@ -1,0 +1,12 @@
+{
+  "goal_text": "Mikham tu message-ham confident tar basham.",
+  "situation_text": "Ba ye nafar dar hal-e ashnayi hastam; mikhad ehsas-e man ro befahme.",
+  "user_message": "Nemidoonam chi begam ke ham khosham biyad ham pushy nasham.",
+  "chat_history": [
+    { "role": "user", "content": "Salam, emrooz chetori?" },
+    { "role": "assistant", "content": "Salam! Khoobam, to chetori?" }
+  ],
+  "context_extracted_text": "Screenshot: conversation snippet. Tone: friendly. Other person asked: 'What are you looking for?'",
+  "output_variant": "FINGLISH",
+  "hard_mode_requested": false
+}

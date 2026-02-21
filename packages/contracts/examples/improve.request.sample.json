@@ -2,6 +2,7 @@
   "input": {
     "draft_text": "Hey, I wanted to say sorry about yesterday. I got overwhelmed and my tone came out harsh.",
     "context": "We had an argument about plans. I want to fix it without sounding needy.",
+    "context_extracted_text": "Screenshot: They said: 'Please don’t cancel last minute again.' Tone: upset but calm.",
     "output_variant": "FINGLISH",
     "hard_mode": false,
     "contact_id": "contact_demo_01"

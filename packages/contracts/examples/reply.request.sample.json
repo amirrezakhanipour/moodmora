@@ -2,6 +2,7 @@
   "input": {
     "received_text": "Ok, but please don’t cancel last minute again. It stresses me out.",
     "context": "They’re upset about me changing plans late.",
+    "context_extracted_text": "Screenshot: Conversation snippet about plans; they asked for earlier notice to avoid stress.",
     "output_variant": "FINGLISH",
     "hard_mode": false,
     "contact_id": "contact_demo_01",

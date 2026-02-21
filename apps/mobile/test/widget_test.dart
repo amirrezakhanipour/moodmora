@@ -5,13 +5,12 @@ import 'package:mobile/main.dart';
 
 void main() {
   testWidgets('app boots without crashing', (tester) async {
+    // We only need a small pump to ensure the widget tree builds.
+    // pumpAndSettle can hang if the app has ongoing animations (expected in real apps).
     await tester.pumpWidget(const MyApp());
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 200));
 
-    // Basic sanity: MaterialApp exists
     expect(find.byType(MaterialApp), findsOneWidget);
-
-    // Basic sanity: we have at least one Scaffold on screen
     expect(find.byType(Scaffold), findsWidgets);
   });
 }

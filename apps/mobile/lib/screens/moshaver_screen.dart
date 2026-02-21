@@ -15,6 +15,16 @@ class _ChatMsg {
   _ChatMsg(this.role, this.text);
 }
 
+enum _CharState {
+  idle,
+  listening,
+  thinking,
+  happy,
+  concerned,
+  protective,
+  oops,
+}
+
 class MoshaverScreen extends StatefulWidget {
   const MoshaverScreen({super.key});
 
@@ -22,7 +32,11 @@ class MoshaverScreen extends StatefulWidget {
   State<MoshaverScreen> createState() => _MoshaverScreenState();
 }
 
-class _MoshaverScreenState extends State<MoshaverScreen> {
+class _MoshaverScreenState extends State<MoshaverScreen>
+    with SingleTickerProviderStateMixin {
+  // ✅ This is TRUE in widget tests.
+  static const bool _isTest = bool.fromEnvironment('FLUTTER_TEST');
+
   final _goalCtrl = TextEditingController();
   final _situationCtrl = TextEditingController();
   final _composerCtrl = TextEditingController();
@@ -34,6 +48,11 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
 
   bool _sending = false;
 
+  // Phase 3.6.5 — character state
+  _CharState _char = _CharState.idle;
+
+  late final AnimationController _idleAnim;
+
   final List<_ChatMsg> _messages = [
     _ChatMsg(
       _ChatRole.assistant,
@@ -44,11 +63,57 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
   bool _contextExpanded = true;
 
   @override
+  void initState() {
+    super.initState();
+
+    _idleAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    );
+
+    // ✅ Never start infinite animation during widget tests (pumpAndSettle will timeout)
+    if (!_isTest) {
+      _idleAnim.repeat(reverse: true);
+    }
+
+    _composerCtrl.addListener(() {
+      if (!mounted) return;
+
+      final hasText = _composerCtrl.text.trim().isNotEmpty;
+      if (_sending) return;
+
+      if (hasText && (_char == _CharState.idle || _char == _CharState.happy)) {
+        _setChar(_CharState.listening);
+      } else if (!hasText && _char == _CharState.listening) {
+        _setChar(_CharState.idle);
+      }
+    });
+  }
+
+  @override
   void dispose() {
+    _idleAnim.dispose();
     _goalCtrl.dispose();
     _situationCtrl.dispose();
     _composerCtrl.dispose();
     super.dispose();
+  }
+
+  void _setChar(_CharState s) {
+    if (_char == s) return;
+    setState(() => _char = s);
+  }
+
+  void _flashChar(
+    _CharState s, {
+    Duration d = const Duration(milliseconds: 1200),
+  }) {
+    _setChar(s);
+    Future.delayed(d, () {
+      if (!mounted) return;
+      if (_char == s)
+        _setChar(_sending ? _CharState.thinking : _CharState.idle);
+    });
   }
 
   void _clearChat() {
@@ -56,9 +121,13 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
       _messages
         ..clear()
         ..add(
-          _ChatMsg(_ChatRole.assistant, 'Ok. Chat پاک شد. Alan goal-et chie?'),
+          _ChatMsg(
+            _ChatRole.assistant,
+            'Ok. Chat pak shod. Alan goal-et chie?',
+          ),
         );
     });
+    _setChar(_CharState.idle);
   }
 
   void _removeScreenshots() {
@@ -68,6 +137,7 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
       _ctxRedact = true;
       _messages.add(_ChatMsg(_ChatRole.system, 'Screenshots removed.'));
     });
+    _flashChar(_CharState.happy);
   }
 
   void _resetAll() {
@@ -86,10 +156,11 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
         ..add(
           _ChatMsg(
             _ChatRole.assistant,
-            'Ok. Reset all انجام شد. Goal-et chie?',
+            'Ok. Reset all anjam shod. Goal-et chie?',
           ),
         );
     });
+    _setChar(_CharState.idle);
   }
 
   Future<void> _confirmAndRun({
@@ -175,6 +246,7 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
                 );
               });
               setSheet(() {});
+              _flashChar(_CharState.happy);
             }
 
             Future<void> editText() async {
@@ -226,6 +298,7 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
               if (saved == true) {
                 setState(() => _ctxText = controller.text.trim());
                 setSheet(() {});
+                _flashChar(_CharState.happy);
               }
             }
 
@@ -236,6 +309,7 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
                 _messages.add(_ChatMsg(_ChatRole.system, 'Context cleared.'));
               });
               setSheet(() {});
+              _flashChar(_CharState.happy);
             }
 
             return SafeArea(
@@ -372,7 +446,6 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
   }
 
   List<Map<String, String>> _buildChatHistory() {
-    // Take last 16 user/assistant messages, ignore system
     final filtered = _messages
         .where((m) => m.role != _ChatRole.system)
         .toList();
@@ -390,6 +463,16 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
         .toList(growable: false);
   }
 
+  _CharState _mapRiskToChar(dynamic data) {
+    if (data is! Map) return _CharState.idle;
+    final risk = data['risk'];
+    if (risk is! Map) return _CharState.idle;
+    final level = (risk['level'] ?? '').toString().toLowerCase().trim();
+    if (level == 'high') return _CharState.concerned;
+    if (level == 'medium') return _CharState.concerned;
+    return _CharState.idle;
+  }
+
   Future<void> _send() async {
     final text = _composerCtrl.text.trim();
     if (text.isEmpty || _sending) return;
@@ -398,7 +481,10 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
       _sending = true;
       _composerCtrl.clear();
       _messages.add(_ChatMsg(_ChatRole.user, text));
+      _contextExpanded = false;
     });
+
+    _setChar(_CharState.thinking);
 
     final api = ApiClient(baseUrl: AppConfig.apiBaseUrl);
 
@@ -414,24 +500,20 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
           : _ctxText.trim(),
       'output_variant': 'FINGLISH',
       'hard_mode_requested': false,
-    };
-
-    // Remove null keys
-    payload.removeWhere((k, v) => v == null);
+    }..removeWhere((k, v) => v == null);
 
     try {
       final env = await api.postJson('/v1/coach/message', body: payload);
 
-      // Expect envelope-like shape: {status, data, error, meta}
       final status = (env['status'] ?? '').toString();
       if (status == 'blocked') {
         final msg = (env['error'] is Map)
             ? (env['error']['message']?.toString() ?? 'Blocked')
             : 'Blocked';
-        setState(() {
-          _messages.add(_ChatMsg(_ChatRole.assistant, 'Blocked: $msg'));
-          _contextExpanded = false;
-        });
+        setState(
+          () => _messages.add(_ChatMsg(_ChatRole.assistant, 'Blocked: $msg')),
+        );
+        _setChar(_CharState.protective);
         return;
       }
 
@@ -453,32 +535,106 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
         buf.writeln('2) ${steps[1]}');
         buf.writeln('3) ${steps[2]}');
       }
-      if (bestNext.isNotEmpty) {
-        buf.writeln('\nBest next message:\n$bestNext');
-      }
+      if (bestNext.isNotEmpty) buf.writeln('\nBest next message:\n$bestNext');
 
-      setState(() {
-        _messages.add(_ChatMsg(_ChatRole.assistant, buf.toString().trim()));
-        _contextExpanded = false;
-      });
+      setState(
+        () =>
+            _messages.add(_ChatMsg(_ChatRole.assistant, buf.toString().trim())),
+      );
+
+      final riskChar = _mapRiskToChar(data);
+      if (riskChar == _CharState.concerned) {
+        _flashChar(_CharState.concerned, d: const Duration(milliseconds: 1600));
+      } else {
+        _flashChar(_CharState.happy);
+      }
     } catch (e) {
-      setState(() {
-        _messages.add(_ChatMsg(_ChatRole.assistant, 'Error: ${e.toString()}'));
-        _contextExpanded = false;
-      });
+      setState(
+        () => _messages.add(
+          _ChatMsg(_ChatRole.assistant, 'Error: ${e.toString()}'),
+        ),
+      );
+      _setChar(_CharState.oops);
+      _flashChar(_CharState.oops, d: const Duration(milliseconds: 1600));
     } finally {
       if (mounted) {
         setState(() => _sending = false);
+        if (_char == _CharState.thinking) _setChar(_CharState.idle);
       }
     }
   }
 
+  String _charLabel(_CharState s) {
+    switch (s) {
+      case _CharState.idle:
+        return 'Ready';
+      case _CharState.listening:
+        return 'Listening…';
+      case _CharState.thinking:
+        return 'Thinking…';
+      case _CharState.happy:
+        return 'Nice 🙂';
+      case _CharState.concerned:
+        return 'Careful';
+      case _CharState.protective:
+        return 'Protective';
+      case _CharState.oops:
+        return 'Oops';
+    }
+  }
+
+  IconData _charIcon(_CharState s) {
+    switch (s) {
+      case _CharState.idle:
+        return Icons.spa;
+      case _CharState.listening:
+        return Icons.hearing;
+      case _CharState.thinking:
+        return Icons.psychology;
+      case _CharState.happy:
+        return Icons.sentiment_satisfied_alt;
+      case _CharState.concerned:
+        return Icons.report_gmailerrorred;
+      case _CharState.protective:
+        return Icons.shield;
+      case _CharState.oops:
+        return Icons.error_outline;
+    }
+  }
+
   Widget _characterStrip() {
-    // Placeholder for Step 3.6.5 (Character state machine)
+    final cs = Theme.of(context).colorScheme;
+    final label = _charLabel(_char);
+
+    // In tests animation doesn't run; value stays at 0 → scale becomes 1.0 (good)
+    final scale = (_char == _CharState.idle)
+        ? (1.0 + (_idleAnim.value * 0.04))
+        : 1.0;
+
+    final iconBg = switch (_char) {
+      _CharState.protective => cs.errorContainer,
+      _CharState.concerned => cs.tertiaryContainer,
+      _CharState.oops => cs.errorContainer,
+      _ => cs.surface,
+    };
+
+    final iconFg = switch (_char) {
+      _CharState.protective => cs.onErrorContainer,
+      _CharState.oops => cs.onErrorContainer,
+      _CharState.concerned => cs.onTertiaryContainer,
+      _ => cs.onSurface,
+    };
+
+    final text = _sending
+        ? 'Dar hal-e fekr...'
+        : (_composerCtrl.text.trim().isNotEmpty
+              ? 'Begu chi داری minevisi...'
+              : 'Man inja-am. Har chi mikhay begu.');
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        color: cs.surfaceContainerHighest,
         border: Border(
           bottom: BorderSide(
             color: Theme.of(context).dividerColor.withOpacity(0.4),
@@ -487,16 +643,31 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
       ),
       child: Row(
         children: [
-          const CircleAvatar(child: Icon(Icons.spa)),
+          AnimatedBuilder(
+            animation: _idleAnim,
+            builder: (ctx, _) {
+              return Transform.scale(
+                scale: scale,
+                child: CircleAvatar(
+                  backgroundColor: iconBg,
+                  foregroundColor: iconFg,
+                  child: Icon(_charIcon(_char)),
+                ),
+              );
+            },
+          ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              _sending
-                  ? 'Dar hal-e fekr...'
-                  : 'Man inja-am. Har chi mikhay begu.',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(text, style: TextStyle(color: cs.onSurfaceVariant)),
+              ],
             ),
           ),
         ],
@@ -510,21 +681,18 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
 
     if (!_contextExpanded) {
       final pieces = <String>[];
-      if (goal.isNotEmpty) {
+      if (goal.isNotEmpty)
         pieces.add(
           'Goal: ${goal.length > 40 ? '${goal.substring(0, 40)}…' : goal}',
         );
-      }
-      if (situation.isNotEmpty) {
+      if (situation.isNotEmpty)
         pieces.add(
           'Situation: ${situation.length > 40 ? '${situation.substring(0, 40)}…' : situation}',
         );
-      }
-      if (_ctxText.trim().isNotEmpty) {
+      if (_ctxText.trim().isNotEmpty)
         pieces.add(
           'Context: ${_ctxImages.length} screenshot${_ctxImages.length == 1 ? '' : 's'}',
         );
-      }
       if (pieces.isEmpty) pieces.add('Tap to add goal/situation');
 
       return InkWell(
@@ -714,7 +882,7 @@ class _MoshaverScreenState extends State<MoshaverScreen> {
               if (v == 'clear') {
                 _confirmAndRun(
                   title: 'Clear chat',
-                  body: 'In faqat timeline ro پاک mikone.',
+                  body: 'In faqat timeline ro pak mikone.',
                   onConfirm: _clearChat,
                 );
               } else if (v == 'remove_screens') {

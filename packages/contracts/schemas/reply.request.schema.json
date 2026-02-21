@@ -13,6 +13,9 @@
       "properties": {
         "received_text": { "type": "string", "minLength": 1 },
         "context": { "type": "string" },
+
+        "context_extracted_text": { "type": "string", "minLength": 1 },
+
         "output_variant": { "type": "string", "enum": ["AUTO", "FA_SCRIPT", "FINGLISH", "EN"] },
         "hard_mode": { "type": "boolean" },
         "contact_id": { "type": "string" },

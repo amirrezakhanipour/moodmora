@@ -18,13 +18,6 @@
         "reasons": { "type": "array", "items": { "type": "string" }, "maxItems": 10 }
       }
     },
-
-    "context_summary": {
-      "type": "array",
-      "maxItems": 3,
-      "items": { "type": "string", "minLength": 1 }
-    },
-
     "suggestions": {
       "type": "array",
       "minItems": 2,

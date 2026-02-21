@@ -1,14 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../app_config.dart';
 import '../models/reply_response.dart';
 import '../services/api_client.dart';
 import '../services/preset_store.dart';
-import '../services/screenshot_ocr_service.dart';
 
 class ReplyScreen extends StatefulWidget {
   const ReplyScreen({super.key});
@@ -22,18 +18,12 @@ class _ReplyScreenState extends State<ReplyScreen> {
   bool _hardMode = false;
   String _variant = 'FINGLISH';
 
-  // Phase 3.6.4 — screenshot context state
-  List<XFile> _ctxImages = [];
-  String _ctxText = '';
-  bool _ctxRedact = true;
-
   // Phase 3.5 (Dating Add-on) — UI state (guarded by feature flag)
   String _flirtMode = 'off'; // off | subtle | playful | direct
 
   // Phase 3.5 (I'm stuck) — UI state
   bool _iStuckActive = false;
-  String _iStuckGoal =
-      'Reply friendly'; // Reply friendly | Set boundary | Flirt back | Suggest plan
+  String _iStuckGoal = 'Reply friendly'; // Reply friendly | Set boundary | Flirt back | Suggest plan
   String _iStuckVibe = 'Calm'; // Calm | Playful | Direct
   String _iStuckDetail = '';
 
@@ -80,11 +70,6 @@ class _ReplyScreenState extends State<ReplyScreen> {
       _error = null;
       _loading = false;
 
-      // context reset
-      _ctxImages = [];
-      _ctxText = '';
-      _ctxRedact = true;
-
       _flirtMode = 'off';
 
       _iStuckActive = false;
@@ -93,234 +78,6 @@ class _ReplyScreenState extends State<ReplyScreen> {
       _iStuckDetail = '';
     });
     FocusManager.instance.primaryFocus?.unfocus();
-  }
-
-  Future<void> _openContextSheet() async {
-    await showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (sheetCtx) {
-        return StatefulBuilder(
-          builder: (sheetCtx, setSheet) {
-            Future<void> pick() async {
-              final res = await ScreenshotOcrService.pickAndExtract(
-                maxImages: 3,
-              );
-              if (res == null) return;
-
-              var text = res.extractedText;
-              if (_ctxRedact && text.isNotEmpty) {
-                text = ScreenshotOcrService.redactBasic(text);
-              }
-
-              setState(() {
-                _ctxImages = res.images;
-                _ctxText = text;
-              });
-              setSheet(() {});
-            }
-
-            Future<void> editText() async {
-              final controller = TextEditingController(text: _ctxText);
-              final saved = await showModalBottomSheet<bool>(
-                context: sheetCtx,
-                showDragHandle: true,
-                isScrollControlled: true,
-                builder: (editCtx) {
-                  return Padding(
-                    padding: EdgeInsets.only(
-                      left: 16,
-                      right: 16,
-                      top: 12,
-                      bottom: MediaQuery.of(editCtx).viewInsets.bottom + 16,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text(
-                          'Edit extracted text',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: controller,
-                          minLines: 6,
-                          maxLines: 12,
-                          decoration: const InputDecoration(
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        FilledButton(
-                          onPressed: () => Navigator.of(editCtx).pop(true),
-                          child: const Text('Save'),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                    ),
-                  );
-                },
-              );
-
-              if (saved == true) {
-                setState(() => _ctxText = controller.text.trim());
-                setSheet(() {});
-              }
-            }
-
-            void clearAll() {
-              setState(() {
-                _ctxImages = [];
-                _ctxText = '';
-              });
-              setSheet(() {});
-            }
-
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'Context (screenshots)',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: pick,
-                            icon: const Icon(Icons.photo_library_outlined),
-                            label: const Text('Pick screenshots (max 3)'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        IconButton(
-                          tooltip: 'Remove all',
-                          onPressed: _ctxImages.isEmpty && _ctxText.isEmpty
-                              ? null
-                              : clearAll,
-                          icon: const Icon(Icons.delete_outline),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      value: _ctxRedact,
-                      onChanged: (v) => setState(() => _ctxRedact = v),
-                      title: const Text('Remove names/numbers (recommended)'),
-                    ),
-                    if (_ctxImages.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 74,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _ctxImages.length,
-                          separatorBuilder: (context, index) =>
-                              const SizedBox(width: 8),
-                          itemBuilder: (context, i) {
-                            final img = _ctxImages[i];
-                            return Stack(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Image.file(
-                                    File(img.path),
-                                    width: 74,
-                                    height: 74,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                                Positioned(
-                                  right: 2,
-                                  top: 2,
-                                  child: InkWell(
-                                    onTap: () {
-                                      setState(() {
-                                        _ctxImages = List.of(_ctxImages)
-                                          ..removeAt(i);
-                                        if (_ctxImages.isEmpty) {
-                                          _ctxText = '';
-                                        }
-                                      });
-                                      setSheet(() {});
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withAlpha(
-                                          (0.6 * 255).round(),
-                                        ),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.close,
-                                        size: 14,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 10),
-                    if (_ctxText.isNotEmpty)
-                      OutlinedButton.icon(
-                        onPressed: editText,
-                        icon: const Icon(Icons.edit),
-                        label: const Text('Edit extracted text'),
-                      ),
-                    if (_ctxText.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'Preview (optional)',
-                        style: TextStyle(
-                          color: Theme.of(
-                            sheetCtx,
-                          ).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: Theme.of(sheetCtx).dividerColor,
-                          ),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          _ctxText.length > 600
-                              ? '${_ctxText.substring(0, 600)}…'
-                              : _ctxText,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
   }
 
   Future<void> _submit() async {
@@ -339,10 +96,6 @@ class _ReplyScreenState extends State<ReplyScreen> {
       'hard_mode': _hardMode,
       'output_variant': _variant,
     };
-
-    if (_ctxText.trim().isNotEmpty) {
-      input['context_extracted_text'] = _ctxText.trim();
-    }
 
     if (AppConfig.datingAddonEnabled) {
       input['flirt_mode'] = _flirtMode;
@@ -376,9 +129,7 @@ class _ReplyScreenState extends State<ReplyScreen> {
   Future<void> _copy(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Copied')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
   }
 
   Widget _datingChipRow() {
@@ -400,40 +151,16 @@ class _ReplyScreenState extends State<ReplyScreen> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            _ModeChip(
-              label: 'Off',
-              value: 'off',
-              groupValue: _flirtMode,
-              onSelected: (v) => setState(() => _flirtMode = v),
-            ),
-            _ModeChip(
-              label: 'Subtle',
-              value: 'subtle',
-              groupValue: _flirtMode,
-              onSelected: (v) => setState(() => _flirtMode = v),
-            ),
-            _ModeChip(
-              label: 'Playful',
-              value: 'playful',
-              groupValue: _flirtMode,
-              onSelected: (v) => setState(() => _flirtMode = v),
-            ),
-            _ModeChip(
-              label: 'Direct',
-              value: 'direct',
-              groupValue: _flirtMode,
-              onSelected: (v) => setState(() => _flirtMode = v),
-            ),
+            _ModeChip(label: 'Off', value: 'off', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
+            _ModeChip(label: 'Subtle', value: 'subtle', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
+            _ModeChip(label: 'Playful', value: 'playful', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
+            _ModeChip(label: 'Direct', value: 'direct', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
           ],
         ),
         const SizedBox(height: 4),
         Text(
-          _flirtMode == 'off'
-              ? 'Normal tone (no flirting).'
-              : 'Dating tone enabled: $_flirtMode',
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+          _flirtMode == 'off' ? 'Normal tone (no flirting).' : 'Dating tone enabled: $_flirtMode',
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ],
     );
@@ -451,110 +178,68 @@ class _ReplyScreenState extends State<ReplyScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (sheetCtx) {
+      builder: (ctx) {
         return StatefulBuilder(
-          builder: (sheetCtx, setSheetState) {
+          builder: (ctx, setSheetState) {
             return Padding(
               padding: EdgeInsets.only(
                 left: 16,
                 right: 16,
                 top: 12,
-                bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 16,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    "I'm stuck",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
+                  const Text("I'm stuck", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 12),
-                  const Text(
-                    'Goal',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
+
+                  const Text('Goal', style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      ChoiceChip(
-                        label: const Text('Reply friendly'),
-                        selected: goal == 'Reply friendly',
-                        onSelected: (_) =>
-                            setSheetState(() => goal = 'Reply friendly'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Set boundary'),
-                        selected: goal == 'Set boundary',
-                        onSelected: (_) =>
-                            setSheetState(() => goal = 'Set boundary'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Flirt back'),
-                        selected: goal == 'Flirt back',
-                        onSelected: (_) =>
-                            setSheetState(() => goal = 'Flirt back'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Suggest plan'),
-                        selected: goal == 'Suggest plan',
-                        onSelected: (_) =>
-                            setSheetState(() => goal = 'Suggest plan'),
-                      ),
+                      ChoiceChip(label: const Text('Reply friendly'), selected: goal == 'Reply friendly', onSelected: (_) => setSheetState(() => goal = 'Reply friendly')),
+                      ChoiceChip(label: const Text('Set boundary'), selected: goal == 'Set boundary', onSelected: (_) => setSheetState(() => goal = 'Set boundary')),
+                      ChoiceChip(label: const Text('Flirt back'), selected: goal == 'Flirt back', onSelected: (_) => setSheetState(() => goal = 'Flirt back')),
+                      ChoiceChip(label: const Text('Suggest plan'), selected: goal == 'Suggest plan', onSelected: (_) => setSheetState(() => goal = 'Suggest plan')),
                     ],
                   ),
+
                   const SizedBox(height: 12),
-                  const Text(
-                    'Vibe',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
+                  const Text('Vibe', style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      ChoiceChip(
-                        label: const Text('Calm'),
-                        selected: vibe == 'Calm',
-                        onSelected: (_) => setSheetState(() => vibe = 'Calm'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Playful'),
-                        selected: vibe == 'Playful',
-                        onSelected: (_) =>
-                            setSheetState(() => vibe = 'Playful'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Direct'),
-                        selected: vibe == 'Direct',
-                        onSelected: (_) => setSheetState(() => vibe = 'Direct'),
-                      ),
+                      ChoiceChip(label: const Text('Calm'), selected: vibe == 'Calm', onSelected: (_) => setSheetState(() => vibe = 'Calm')),
+                      ChoiceChip(label: const Text('Playful'), selected: vibe == 'Playful', onSelected: (_) => setSheetState(() => vibe = 'Playful')),
+                      ChoiceChip(label: const Text('Direct'), selected: vibe == 'Direct', onSelected: (_) => setSheetState(() => vibe = 'Direct')),
                     ],
                   ),
+
                   const SizedBox(height: 12),
-                  const Text(
-                    'One detail (optional)',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
+                  const Text('One detail (optional)', style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   TextField(
                     controller: detailCtrl,
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
-                      hintText:
-                          'e.g., they asked about weekend, they were cold, they joked…',
+                      hintText: 'e.g., they asked about weekend, they were cold, they joked…',
                     ),
                     maxLines: 2,
                   ),
+
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
                         child: FilledButton(
                           onPressed: () {
-                            Navigator.of(sheetCtx).pop({
+                            Navigator.of(ctx).pop({
                               'goal': goal,
                               'vibe': vibe,
                               'detail': detailCtrl.text.trim(),
@@ -581,11 +266,8 @@ class _ReplyScreenState extends State<ReplyScreen> {
       _iStuckDetail = result['detail'] ?? _iStuckDetail;
       _iStuckActive = true;
 
-      final detail = (_iStuckDetail.trim().isEmpty)
-          ? ''
-          : ', detail: ${_iStuckDetail.trim()}';
-      _controller.text =
-          "I'm stuck: goal: $_iStuckGoal, vibe: $_iStuckVibe$detail";
+      final detail = (_iStuckDetail.trim().isEmpty) ? '' : ', detail: ${_iStuckDetail.trim()}';
+      _controller.text = "I'm stuck: goal: $_iStuckGoal, vibe: $_iStuckVibe$detail";
     });
 
     _controller.selection = TextSelection.fromPosition(
@@ -611,50 +293,19 @@ class _ReplyScreenState extends State<ReplyScreen> {
     final suggestions = _result?.suggestions ?? const [];
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Reply'),
-        actions: [
-          IconButton(
-            tooltip: 'Attach screenshots',
-            onPressed: _openContextSheet,
-            icon: const Icon(Icons.attach_file),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Reply')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           _InfoBar(text: 'API: ${AppConfig.apiBaseUrl}'),
           const SizedBox(height: 12),
-          if (_ctxText.trim().isNotEmpty) ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    const Icon(Icons.photo_library_outlined, size: 18),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Context ready (${_ctxImages.length} screenshot${_ctxImages.length == 1 ? '' : 's'})',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: _openContextSheet,
-                      child: const Text('Edit'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
+
           const Text(
             'Paste the message you received',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
+
           TextField(
             controller: _controller,
             maxLines: 6,
@@ -664,9 +315,11 @@ class _ReplyScreenState extends State<ReplyScreen> {
             ),
             onChanged: (_) => setState(() {}),
           ),
+
           const SizedBox(height: 8),
           _iStuckCTA(),
           const SizedBox(height: 12),
+
           Row(
             children: [
               Expanded(
@@ -678,10 +331,7 @@ class _ReplyScreenState extends State<ReplyScreen> {
                     labelText: 'Output variant',
                   ),
                   items: const [
-                    DropdownMenuItem(
-                      value: 'FINGLISH',
-                      child: Text('Finglish'),
-                    ),
+                    DropdownMenuItem(value: 'FINGLISH', child: Text('Finglish')),
                     DropdownMenuItem(value: 'EN', child: Text('English')),
                   ],
                   onChanged: (v) {
@@ -701,8 +351,11 @@ class _ReplyScreenState extends State<ReplyScreen> {
               ),
             ],
           ),
+
           _datingChipRow(),
+
           const SizedBox(height: 12),
+
           Row(
             children: [
               Expanded(
@@ -714,9 +367,7 @@ class _ReplyScreenState extends State<ReplyScreen> {
                           width: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(
-                          _iStuckActive ? 'Generate reply' : 'Generate replies',
-                        ),
+                      : Text(_iStuckActive ? 'Generate reply' : 'Generate replies'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -726,11 +377,14 @@ class _ReplyScreenState extends State<ReplyScreen> {
               ),
             ],
           ),
+
           const SizedBox(height: 12),
+
           if (_error != null) ...[
             _ErrorCard(message: _error!, onRetry: _canSubmit ? _submit : null),
             const SizedBox(height: 12),
           ],
+
           if (_result != null) ...[
             _RiskCard(
               level: _result!.risk.level,
@@ -847,9 +501,7 @@ class _ErrorCardState extends State<_ErrorCard> {
     final msg = widget.message;
     final previewLen = 220;
     final canExpand = msg.length > previewLen;
-    final shown = (!_expanded && canExpand)
-        ? '${msg.substring(0, previewLen)}…'
-        : msg;
+    final shown = (!_expanded && canExpand) ? '${msg.substring(0, previewLen)}…' : msg;
 
     return Card(
       child: Padding(

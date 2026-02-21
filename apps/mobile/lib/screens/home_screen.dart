@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../app_config.dart';
 import '../services/preset_store.dart';
-import 'improve_screen.dart';
-import 'reply_screen.dart';
-import 'moshaver_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,16 +11,11 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _index = 0;
-
-  // Phase 3.6: mobile kill-switch (simple, local)
-  // TODO: later wire this to remote config / AppConfig if you want
-  static const bool _moshaverEnabled = true;
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
 
+    // Micro-onboarding V1: auto-prompt once per app run (in-memory)
     if (AppConfig.datingPresetsEnabled &&
         AppConfig.datingAddonEnabled &&
         !PresetStore.didAutoPrompt) {
@@ -35,9 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openPresetsSheet({bool auto = false}) async {
-    if (!AppConfig.datingPresetsEnabled || !AppConfig.datingAddonEnabled) {
-      return;
-    }
+    if (!AppConfig.datingPresetsEnabled || !AppConfig.datingAddonEnabled) return;
 
     final presets = PresetStore.presets();
     final selected = PresetStore.selected;
@@ -45,11 +35,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final chosen = await showModalBottomSheet(
       context: context,
       showDragHandle: true,
-      isScrollControlled: true,
+      isScrollControlled: true, // ✅ allow taller + scroll behavior
       builder: (ctx) {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            // ✅ prevent RenderFlex overflow in small heights (tests, small screens)
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -57,26 +48,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Text(
                     auto ? 'Quick dating setup' : 'Dating presets',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'Pick one vibe. You can change it anytime.',
-                    style: TextStyle(
-                      color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                    ),
+                    style: TextStyle(color: Theme.of(ctx).colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 12),
+
                   for (final p in presets) ...[
                     Card(
                       child: ListTile(
-                        title: Text(
-                          p.title,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
+                        title: Text(p.title, style: const TextStyle(fontWeight: FontWeight.w600)),
                         subtitle: Text(p.description),
                         trailing: (selected?.id == p.id)
                             ? const Icon(Icons.check_circle)
@@ -86,6 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 8),
                   ],
+
                   if (selected != null) ...[
                     const SizedBox(height: 4),
                     TextButton(
@@ -113,45 +98,73 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _onTap(int next) {
-    if (next == 2 && !_moshaverEnabled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Moshaver is disabled (feature flag off).'),
-        ),
-      );
-      return;
+  Widget _presetsCard() {
+    if (!AppConfig.datingPresetsEnabled || !AppConfig.datingAddonEnabled) {
+      return const SizedBox.shrink();
     }
-    setState(() => _index = next);
+
+    final p = PresetStore.selected;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Dating presets',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              p == null ? 'No preset selected' : '${p.title} — ${p.description}',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                FilledButton(
+                  onPressed: () => _openPresetsSheet(),
+                  child: Text(p == null ? 'Choose preset' : 'Change preset'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final pages = <Widget>[
-      const ImproveScreen(),
-      const ReplyScreen(),
-      const MoshaverScreen(),
-    ];
-
     return Scaffold(
-      body: IndexedStack(
-        index: _index.clamp(0, pages.length - 1),
-        children: pages,
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: _onTap,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.auto_fix_high),
-            label: 'Improve',
-          ),
-          NavigationDestination(icon: Icon(Icons.reply), label: 'Reply'),
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            label: 'Moshaver',
-          ),
-        ],
+      appBar: AppBar(title: const Text('MoodMora')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Choose a mode',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+
+            // Micro-onboarding/presets card
+            _presetsCard(),
+            const SizedBox(height: 12),
+
+            FilledButton(
+              onPressed: () => Navigator.pushNamed(context, '/improve'),
+              child: const Text('Improve a message'),
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () => Navigator.pushNamed(context, '/reply'),
+              child: const Text('Write a reply'),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -28,16 +28,16 @@ for (const file of listJsonFiles(schemasDir)) {
 function validateAgainst(schemaId, payload, label) {
   const validate = ajv.getSchema(schemaId);
   if (!validate) {
-    console.error(`ERROR: Missing schema in AJV: ${schemaId}`);
+    console.error(`❌ Missing schema in AJV: ${schemaId}`);
     process.exit(1);
   }
   const ok = validate(payload);
   if (!ok) {
-    console.error(`ERROR: Validation failed: ${label} against ${schemaId}`);
+    console.error(`❌ Validation failed: ${label} against ${schemaId}`);
     console.error(validate.errors);
     process.exit(1);
   }
-  console.log(`OK: ${label} -> ${schemaId}`);
+  console.log(`✅ OK: ${label} -> ${schemaId}`);
 }
 
 function validateFile(schemaId, fileName) {
@@ -54,21 +54,13 @@ validateFile("moodmora://schemas/reply.request.schema.json", "reply.request.samp
 // 2) Improve response: envelope + data
 {
   const env = validateFile("moodmora://schemas/envelope.schema.json", "improve.response.sample.json");
-  validateAgainst(
-    "moodmora://schemas/improve.response.schema.json",
-    env.data,
-    "improve.response.sample.json (data)"
-  );
+  validateAgainst("moodmora://schemas/improve.response.schema.json", env.data, "improve.response.sample.json (data)");
 }
 
 // 3) Reply response: envelope + data
 {
   const env = validateFile("moodmora://schemas/envelope.schema.json", "reply.response.sample.json");
-  validateAgainst(
-    "moodmora://schemas/reply.response.schema.json",
-    env.data,
-    "reply.response.sample.json (data)"
-  );
+  validateAgainst("moodmora://schemas/reply.response.schema.json", env.data, "reply.response.sample.json (data)");
 }
 
 // 4) Error response: envelope + error object
@@ -77,16 +69,4 @@ validateFile("moodmora://schemas/reply.request.schema.json", "reply.request.samp
   validateAgainst("moodmora://schemas/error.schema.json", env.error, "error.response.sample.json (error)");
 }
 
-// 5) Coach (Moshaver): envelope + data
-// NOTE: These files must exist in packages/contracts/examples and schemas dir.
-validateFile("moodmora://schemas/coach.request.schema.json", "coach.request.sample.json");
-{
-  const env = validateFile("moodmora://schemas/envelope.schema.json", "coach.response.sample.json");
-  validateAgainst(
-    "moodmora://schemas/coach.response.schema.json",
-    env.data,
-    "coach.response.sample.json (data)"
-  );
-}
-
-console.log("All contract samples validated successfully.");
+console.log("🎉 All contract samples validated successfully.");

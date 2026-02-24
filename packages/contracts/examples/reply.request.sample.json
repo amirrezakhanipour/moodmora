@@ -1,12 +1,24 @@
 {
   "input": {
-    "received_text": "Ok, but please don’t cancel last minute again. It stresses me out.",
-    "context": "They’re upset about me changing plans late.",
+    "received_text": "Ok, but please don't cancel last minute again. It stresses me out.",
+    "context": "They're upset about me changing plans late.",
     "output_variant": "FINGLISH",
     "hard_mode": false,
     "contact_id": "contact_demo_01",
     "flirt_mode": "off",
     "dating_stage": "early_chat",
     "dating_vibe": "friendly"
+  },
+  "voice": {
+    "enabled": true,
+    "variant": "FINGLISH",
+    "profile": {
+      "warmth": 0.7,
+      "directness": 0.6,
+      "brevity": 0.65,
+      "formality": 0.25,
+      "emoji_rate": 0.1,
+      "do_not_use": ["gherbanet", "sarafraz"]
+    }
   }
 }

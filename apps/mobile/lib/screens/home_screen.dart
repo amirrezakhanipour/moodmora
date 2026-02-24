@@ -182,39 +182,80 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _contactsCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Contacts',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Tune your tone per person (boss, partner, friend, etc).',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                FilledButton(
+                  onPressed: () => Navigator.pushNamed(context, '/contacts'),
+                  child: const Text('Open'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('MoodMora')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Choose a mode',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Choose a mode',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
 
-            // Voice card
-            _voiceCard(),
-            const SizedBox(height: 12),
+              // Voice card
+              _voiceCard(),
+              const SizedBox(height: 12),
 
-            // Micro-onboarding/presets card
-            _presetsCard(),
-            const SizedBox(height: 12),
+              // Contacts card
+              _contactsCard(),
+              const SizedBox(height: 12),
 
-            FilledButton(
-              onPressed: () => Navigator.pushNamed(context, '/improve'),
-              child: const Text('Improve a message'),
-            ),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: () => Navigator.pushNamed(context, '/reply'),
-              child: const Text('Write a reply'),
-            ),
-          ],
+              // Micro-onboarding/presets card
+              _presetsCard(),
+              const SizedBox(height: 12),
+
+              FilledButton(
+                onPressed: () => Navigator.pushNamed(context, '/improve'),
+                child: const Text('Improve a message'),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: () => Navigator.pushNamed(context, '/reply'),
+                child: const Text('Write a reply'),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );

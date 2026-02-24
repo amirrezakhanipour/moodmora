@@ -78,6 +78,27 @@ class _ImproveScreenState extends State<ImproveScreen> {
     });
   }
 
+  // ---- Lint-safe helpers for contact picker ----
+  Future<void> _ensureContactsLoaded() async {
+    if (_contactsLoaded) return;
+    await _loadContacts();
+  }
+
+  Future<Contact?> _openContactPicker() {
+    // IMPORTANT: no await before using `context` in this method
+    return ContactPicker.pick(
+      context,
+      contacts: _contacts,
+      selected: _selectedContact,
+      onClear: () async {
+        await _contactStore.saveLastSelectedId(null);
+        if (!mounted) return;
+        setState(() => _selectedContact = null);
+      },
+    );
+  }
+  // --------------------------------------------
+
   @override
   void dispose() {
     _controller.dispose();
@@ -202,23 +223,10 @@ class _ImproveScreenState extends State<ImproveScreen> {
             ActionChip(
               label: Text(label),
               onPressed: () async {
-                final ctx = context; // capture before async gap
-
-                if (!_contactsLoaded) {
-                  await _loadContacts();
-                }
+                await _ensureContactsLoaded();
                 if (!mounted) return;
 
-                final picked = await ContactPicker.pick(
-                  ctx,
-                  contacts: _contacts,
-                  selected: _selectedContact,
-                  onClear: () async {
-                    await _contactStore.saveLastSelectedId(null);
-                    if (!mounted) return;
-                    setState(() => _selectedContact = null);
-                  },
-                );
+                final picked = await _openContactPicker();
 
                 if (!mounted) return;
                 if (picked != null) {
@@ -623,9 +631,8 @@ class _ImproveScreenState extends State<ImproveScreen> {
       'mersi',
       'mamnoon',
       'khoshal',
-      'Γ¥ñ∩╕Å',
-      '≡ƒÿè',
-      '≡ƒÖé',
+      ':)',
+      '<3',
     ];
     return _containsAny(text, warm) ? 0.8 : 0.45;
   }

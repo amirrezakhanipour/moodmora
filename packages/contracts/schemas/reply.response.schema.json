@@ -21,6 +21,19 @@
     "hard_mode_applied": { "type": "boolean" },
     "safety_line": { "type": "string", "minLength": 1 },
     "best_question": { "type": "string", "minLength": 1 },
+
+    "applied_contact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "display_name": { "type": "string", "minLength": 1 },
+        "relation_tag": { "type": "string" }
+      }
+    },
+    "style_applied_summary": { "type": "string", "minLength": 1 },
+
     "suggestions": {
       "type": "array",
       "minItems": 2,

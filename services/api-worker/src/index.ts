@@ -1,6 +1,6 @@
 // services/api-worker/src/index.ts
 import { groqChatCompletion, type GroqMessage } from "./groq";
-import { buildMessages } from "./prompt_builder";
+import { buildMessages, type VoiceInput, type VoiceProfile } from "./prompt_builder";
 import { parseAndValidateLlmOutput } from "./llm_output";
 import { validateEnvelopeContract } from "./contract_validate";
 import { classifyInput } from "./safety_min";
@@ -75,6 +75,50 @@ function sanitizeEnum<T extends string>(value: unknown, allowed: readonly T[]): 
   if (typeof value !== "string") return undefined;
   const v = value.trim() as T;
   return (allowed as readonly string[]).includes(v) ? v : undefined;
+}
+
+function clamp01(n: unknown): number | undefined {
+  if (typeof n !== "number" || Number.isNaN(n)) return undefined;
+  return Math.max(0, Math.min(1, n));
+}
+
+function safeStrList(v: unknown, max = 50): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const x of v) {
+    if (typeof x === "string") {
+      const s = x.trim();
+      if (s) out.push(s);
+    }
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function parseVoice(body: any): VoiceInput | undefined {
+  const v = body?.voice;
+  if (!v || typeof v !== "object") return undefined;
+
+  const enabled = v.enabled === true;
+
+  const variant = typeof v.variant === "string" ? v.variant.trim() : undefined;
+
+  const profRaw = v.profile;
+  let profile: VoiceProfile | undefined = undefined;
+  if (profRaw && typeof profRaw === "object") {
+    profile = {
+      warmth: clamp01(profRaw.warmth),
+      directness: clamp01(profRaw.directness),
+      brevity: clamp01(profRaw.brevity),
+      formality: clamp01(profRaw.formality),
+      emoji_rate: clamp01(profRaw.emoji_rate),
+      do_not_use: safeStrList(profRaw.do_not_use),
+    };
+  }
+
+  // Only return object if enabled or profile/variant is present (still additive)
+  if (!enabled && !variant && !profile) return undefined;
+  return { enabled, variant, profile };
 }
 
 const ALLOWED_FLIRT_MODE = ["off", "subtle", "playful", "direct"] as const;
@@ -163,6 +207,9 @@ async function generateSuggestionsWithGroq(args: {
 
   // Phase 3.5.5 — soft safety hints (allow + redirect)
   safetyHints?: string[];
+
+  // Phase 5 — Build My Voice (optional/additive)
+  voice?: VoiceInput;
 }): Promise<{
   suggestions: Suggestion[];
   safety_line?: string;
@@ -191,6 +238,7 @@ async function generateSuggestionsWithGroq(args: {
     datingStage: args.datingStage,
     datingVibe: args.datingVibe,
     safetyHints: args.safetyHints,
+    voice: args.voice,
   });
 
   const t0 = nowMs();
@@ -357,6 +405,9 @@ export default {
       const requestedHardMode = Boolean(body?.input?.hard_mode);
       const variant = body?.input?.output_variant as string | undefined;
 
+      // Phase 5: voice (optional/additive)
+      const voice = parseVoice(body);
+
       // Phase 3.5: smart defaults
       const flirtModeRaw = sanitizeEnum(body?.input?.flirt_mode, ALLOWED_FLIRT_MODE) ?? "off";
       const datingStage = sanitizeEnum(body?.input?.dating_stage, ALLOWED_DATING_STAGE);
@@ -417,6 +468,7 @@ export default {
           datingStage,
           datingVibe,
           safetyHints,
+          voice,
         });
 
         const baseMeta = buildBaseMeta({
@@ -499,6 +551,9 @@ export default {
       const requestedHardMode = Boolean(body?.input?.hard_mode);
       const variant = body?.input?.output_variant as string | undefined;
 
+      // Phase 5: voice (optional/additive)
+      const voice = parseVoice(body);
+
       // Phase 3.5: smart defaults
       const flirtModeRaw = sanitizeEnum(body?.input?.flirt_mode, ALLOWED_FLIRT_MODE) ?? "off";
       const datingStage = sanitizeEnum(body?.input?.dating_stage, ALLOWED_DATING_STAGE);
@@ -559,6 +614,7 @@ export default {
           datingStage,
           datingVibe,
           safetyHints,
+          voice,
         });
 
         const baseMeta = buildBaseMeta({

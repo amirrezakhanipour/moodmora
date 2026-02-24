@@ -1,6 +1,7 @@
 // services/api-worker/src/index.ts
 import { groqChatCompletion, type GroqMessage } from "./groq";
 import { buildMessages, type VoiceInput, type VoiceProfile } from "./prompt_builder";
+import { computeVoiceMatchScore } from "./voice_score";
 import { parseAndValidateLlmOutput } from "./llm_output";
 import { validateEnvelopeContract } from "./contract_validate";
 import { classifyInput } from "./safety_min";
@@ -471,6 +472,8 @@ export default {
           voice,
         });
 
+        const voiceScore = computeVoiceMatchScore(voice, out.suggestions);
+
         const baseMeta = buildBaseMeta({
           env: safeEnv,
           requestPath: url.pathname,
@@ -482,7 +485,7 @@ export default {
 
         const data: any = {
           mode: "IMPROVE",
-          voice_match_score: 80,
+          voice_match_score: voiceScore,
           risk: { level: risk.level, score: risk.score, reasons: risk.reasons },
           suggestions: out.suggestions,
         };
@@ -617,6 +620,8 @@ export default {
           voice,
         });
 
+        const voiceScore = computeVoiceMatchScore(voice, out.suggestions);
+
         const baseMeta = buildBaseMeta({
           env: safeEnv,
           requestPath: url.pathname,
@@ -628,7 +633,7 @@ export default {
 
         const data: any = {
           mode: "REPLY",
-          voice_match_score: 80,
+          voice_match_score: voiceScore,
           risk: { level: risk.level, score: risk.score, reasons: risk.reasons },
           suggestions: out.suggestions,
         };

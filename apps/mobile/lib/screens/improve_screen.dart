@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_config.dart';
+import '../models/contact.dart';
 import '../models/improve_response.dart';
 import '../models/voice_profile.dart';
 import '../services/api_client.dart';
+import '../services/contact_store.dart';
 import '../services/preset_store.dart';
 import '../services/voice_store.dart';
+import '../widgets/contact_picker.dart';
 
 class ImproveScreen extends StatefulWidget {
   const ImproveScreen({super.key});
@@ -19,6 +22,12 @@ class _ImproveScreenState extends State<ImproveScreen> {
   final _controller = TextEditingController();
   bool _hardMode = false;
   String _variant = 'FINGLISH';
+
+  // Phase 6 (Contacts)
+  final _contactStore = ContactStore();
+  List<Contact> _contacts = const [];
+  Contact? _selectedContact;
+  bool _contactsLoaded = false;
 
   // Phase 3.5 (Dating Add-on) — UI state (guarded by feature flag)
   String _flirtMode = 'off'; // off | subtle | playful | direct
@@ -53,6 +62,19 @@ class _ImproveScreenState extends State<ImproveScreen> {
           _error = null;
         });
       }
+    });
+
+    _loadContacts();
+  }
+
+  Future<void> _loadContacts() async {
+    final all = await _contactStore.loadAll();
+    final sel = await ContactPicker.loadSelected(store: _contactStore);
+    if (!mounted) return;
+    setState(() {
+      _contacts = all;
+      _selectedContact = sel;
+      _contactsLoaded = true;
     });
   }
 
@@ -110,16 +132,19 @@ class _ImproveScreenState extends State<ImproveScreen> {
 
     final body = <String, dynamic>{'input': input};
 
+    // Phase 6: Contact snapshot (optional)
+    if (_selectedContact != null) {
+      input['contact_id'] = _selectedContact!.id;
+      body['contact'] = _selectedContact!.toJson();
+    }
+
     // Phase 5: Build My Voice (local-first)
-    // If voice is enabled locally, attach root-level `voice` object to request.
     try {
       final voiceState = await VoiceStore().load();
       if (voiceState.enabled) {
         body['voice'] = voiceState.toJson();
       }
-    } catch (_) {
-      // Never block request if local storage fails.
-    }
+    } catch (_) {}
 
     try {
       final env = await api.postEnvelope(
@@ -150,6 +175,81 @@ class _ImproveScreenState extends State<ImproveScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Copied')));
+  }
+
+  // ---------- Contact chip row ----------
+  Widget _contactChipRow() {
+    final label = (_selectedContact == null)
+        ? 'Contact: None'
+        : 'Contact: ${_selectedContact!.displayName}';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Text(
+          'Contact',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ActionChip(
+              label: Text(label),
+              onPressed: () async {
+                final ctx = context; // capture before async gap
+
+                if (!_contactsLoaded) {
+                  await _loadContacts();
+                }
+                if (!mounted) return;
+
+                final picked = await ContactPicker.pick(
+                  ctx,
+                  contacts: _contacts,
+                  selected: _selectedContact,
+                  onClear: () async {
+                    await _contactStore.saveLastSelectedId(null);
+                    if (!mounted) return;
+                    setState(() => _selectedContact = null);
+                  },
+                );
+
+                if (!mounted) return;
+                if (picked != null) {
+                  await _contactStore.saveLastSelectedId(picked.id);
+                  if (!mounted) return;
+                  setState(() => _selectedContact = picked);
+                }
+              },
+            ),
+            if (_selectedContact != null)
+              TextButton(
+                onPressed: () async {
+                  await _contactStore.saveLastSelectedId(null);
+                  if (!mounted) return;
+                  setState(() => _selectedContact = null);
+                },
+                child: const Text('Clear'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _selectedContact == null
+              ? 'Optional: tune tone per person.'
+              : 'Using ${_selectedContact!.relationTag}',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
   }
 
   // ---------- Dating chip row ----------
@@ -468,7 +568,6 @@ class _ImproveScreenState extends State<ImproveScreen> {
   }
 
   int _emojiCount(String s) {
-    // naive emoji detect; good enough for feedback loop
     final r = RegExp(r'[\u2600-\u27BF\uD83C-\uDBFF\uDC00-\uDFFF]');
     return r.allMatches(s).length;
   }
@@ -481,11 +580,7 @@ class _ImproveScreenState extends State<ImproveScreen> {
     return 0.2;
   }
 
-  double _measuredEmojiRate(String text) {
-    final e = _emojiCount(text);
-    // 0..2 per msg -> 0..1
-    return _clamp01(e / 2.0);
-  }
+  double _measuredEmojiRate(String text) => _clamp01(_emojiCount(text) / 2.0);
 
   bool _containsAny(String text, List<String> tokens) {
     final low = text.toLowerCase();
@@ -528,9 +623,9 @@ class _ImproveScreenState extends State<ImproveScreen> {
       'mersi',
       'mamnoon',
       'khoshal',
-      '❤️',
-      '😊',
-      '🙂',
+      'Γ¥ñ∩╕Å',
+      '≡ƒÿè',
+      '≡ƒÖé',
     ];
     return _containsAny(text, warm) ? 0.8 : 0.45;
   }
@@ -594,7 +689,6 @@ class _ImproveScreenState extends State<ImproveScreen> {
       final targetDirectness = _measuredDirectness(text);
       final targetWarmth = _measuredWarmth(text);
 
-      // move away from target
       double away(double current, double target) {
         final dir = current >= target ? 1 : -1;
         return _clamp01(current + dir * 0.12);
@@ -798,13 +892,11 @@ class _ImproveScreenState extends State<ImproveScreen> {
         children: [
           _InfoBar(text: 'API: ${AppConfig.apiBaseUrl}'),
           const SizedBox(height: 12),
-
           const Text(
             'Paste your draft message',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
-
           TextField(
             controller: _controller,
             maxLines: 6,
@@ -814,12 +906,9 @@ class _ImproveScreenState extends State<ImproveScreen> {
             ),
             onChanged: (_) => setState(() {}),
           ),
-
           _starterTemplatesRow(),
           _starterCTA(),
-
           const SizedBox(height: 12),
-
           Row(
             children: [
               Expanded(
@@ -854,11 +943,9 @@ class _ImproveScreenState extends State<ImproveScreen> {
               ),
             ],
           ),
-
+          _contactChipRow(),
           _datingChipRow(),
-
           const SizedBox(height: 12),
-
           Row(
             children: [
               Expanded(
@@ -882,14 +969,11 @@ class _ImproveScreenState extends State<ImproveScreen> {
               ),
             ],
           ),
-
           const SizedBox(height: 12),
-
           if (_error != null) ...[
             _ErrorCard(message: _error!, onRetry: _canSubmit ? _submit : null),
             const SizedBox(height: 12),
           ],
-
           if (_result != null) ...[
             _RiskCard(
               level: _result!.risk.level,
@@ -898,7 +982,34 @@ class _ImproveScreenState extends State<ImproveScreen> {
               voiceMatchScore: _result!.voiceMatchScore,
             ),
             const SizedBox(height: 12),
-
+            if (_result!.appliedContact != null) ...[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Applied: ${_result!.appliedContact!.displayName}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      if (_result!.styleAppliedSummary != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          _result!.styleAppliedSummary!,
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             if (_result!.hardModeApplied) ...[
               _HardModeCard(
                 safetyLine: _result!.safetyLine,
@@ -907,13 +1018,11 @@ class _ImproveScreenState extends State<ImproveScreen> {
               ),
               const SizedBox(height: 12),
             ],
-
             Text(
               _suggestionsTitle(_result!),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
-
             for (int i = 0; i < suggestions.length; i++) ...[
               Card(
                 child: Padding(
@@ -1140,11 +1249,11 @@ class _RiskCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Risk: $level ($score) • Voice match: $voiceMatchScore',
+              'Risk: $level ($score) · Voice match: $voiceMatchScore',
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
-            for (final r in reasons) Text('• $r'),
+            for (final r in reasons) Text('· $r'),
           ],
         ),
       ),

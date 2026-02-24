@@ -27,6 +27,37 @@ class ReplyRisk {
   }
 }
 
+class AppliedContact {
+  AppliedContact({
+    required this.id,
+    required this.displayName,
+    required this.relationTag,
+  });
+
+  final String id;
+  final String displayName;
+  final String? relationTag;
+
+  factory AppliedContact.fromJson(Map<String, dynamic> json) {
+    final id = json['id'];
+    final dn = json['display_name'];
+    final rt = json['relation_tag'];
+
+    if (id is! String || id.trim().isEmpty) {
+      throw FormatException('applied_contact.id missing');
+    }
+    if (dn is! String || dn.trim().isEmpty) {
+      throw FormatException('applied_contact.display_name missing');
+    }
+
+    return AppliedContact(
+      id: id,
+      displayName: dn,
+      relationTag: (rt is String && rt.trim().isNotEmpty) ? rt : null,
+    );
+  }
+}
+
 class ReplyResponse {
   ReplyResponse({
     required this.mode,
@@ -36,6 +67,10 @@ class ReplyResponse {
     required this.hardModeApplied,
     required this.safetyLine,
     required this.bestQuestion,
+
+    // Phase 6 (Contacts) — optional/additive
+    required this.appliedContact,
+    required this.styleAppliedSummary,
   });
 
   final String mode;
@@ -47,6 +82,10 @@ class ReplyResponse {
   final bool hardModeApplied;
   final String? safetyLine;
   final String? bestQuestion;
+
+  // Phase 6 (Contacts) — optional/additive
+  final AppliedContact? appliedContact;
+  final String? styleAppliedSummary;
 
   factory ReplyResponse.fromJson(Map<String, dynamic> json) {
     final mode = json['mode'];
@@ -87,6 +126,22 @@ class ReplyResponse {
         ? bqRaw
         : null;
 
+    // Phase 6 optional fields
+    AppliedContact? applied;
+    final ac = json['applied_contact'];
+    if (ac is Map<String, dynamic>) {
+      try {
+        applied = AppliedContact.fromJson(ac);
+      } catch (_) {
+        applied = null;
+      }
+    }
+
+    final sasRaw = json['style_applied_summary'];
+    final styleSummary = (sasRaw is String && sasRaw.trim().isNotEmpty)
+        ? sasRaw
+        : null;
+
     return ReplyResponse(
       mode: mode,
       voiceMatchScore: vms,
@@ -95,6 +150,8 @@ class ReplyResponse {
       hardModeApplied: hardModeApplied,
       safetyLine: safetyLine,
       bestQuestion: bestQuestion,
+      appliedContact: applied,
+      styleAppliedSummary: styleSummary,
     );
   }
 }

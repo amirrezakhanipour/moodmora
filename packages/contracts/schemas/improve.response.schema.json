@@ -18,6 +18,9 @@
         "reasons": { "type": "array", "items": { "type": "string" }, "maxItems": 10 }
       }
     },
+    "hard_mode_applied": { "type": "boolean" },
+    "safety_line": { "type": "string", "minLength": 1 },
+    "best_question": { "type": "string", "minLength": 1 },
     "suggestions": {
       "type": "array",
       "minItems": 2,
@@ -34,5 +37,19 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "hard_mode_applied": { "const": true } },
+        "required": ["hard_mode_applied"]
+      },
+      "then": {
+        "required": ["safety_line", "best_question"],
+        "properties": {
+          "suggestions": { "minItems": 2, "maxItems": 2 }
+        }
+      }
+    }
+  ]
 }

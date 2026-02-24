@@ -2,11 +2,8 @@
 import type { GroqMessage } from "./groq";
 
 export type PromptMode = "IMPROVE" | "REPLY";
-
 export type FlirtMode = "off" | "subtle" | "playful" | "direct";
-
 export type DatingStage = "first_msg" | "early_chat" | "planning" | "reconnect" | "post_date";
-
 export type DatingVibe = "fun" | "classy" | "direct" | "shy" | "friendly";
 
 export type PromptBuildArgs = {
@@ -14,6 +11,9 @@ export type PromptBuildArgs = {
   inputText: string;
   suggestionCount: number;
   outputVariant?: string;
+
+  // Phase 4 hard mode (controls JSON shape requirements)
+  hardModeApplied?: boolean;
 
   // Phase 3.5 (Dating Add-on) — all optional/additive
   flirtMode?: FlirtMode; // default handled by caller ("off")
@@ -80,18 +80,24 @@ export function buildMessages(args: PromptBuildArgs): GroqMessage[] {
 
   const safetyBlock = safetyHintBlock(args.safetyHints);
 
-  const system = [
-    "You are MoodMora, an assistant that drafts emotionally intelligent, low-conflict messages.",
-    "IMPORTANT OUTPUT RULES:",
-    "- Return ONLY one valid JSON object.",
-    "- No markdown, no code fences, no extra commentary.",
-    `- You must return exactly ${args.suggestionCount} suggestions.`,
-    "- Keep the messages short, calm, and low-pressure.",
-    languageHint,
-    datingHint,
-    safetyBlock,
-    "JSON Schema (shape):",
-    `{
+  const hardModeApplied = Boolean(args.hardModeApplied);
+
+  const hardModeShape = hardModeApplied
+    ? [
+        "HARD MODE OUTPUT RULES:",
+        '- Set "hard_mode_applied": true.',
+        '- Include "safety_line": a short boundary-setting line (1 sentence).',
+        '- Include "best_question": the single best question to de-escalate (1 sentence, ends with ?).',
+        "- Suggestions must be calm, firm, and non-judgmental.",
+        "",
+      ].join("\n")
+    : "";
+
+  const jsonShape = hardModeApplied
+    ? `{
+      "hard_mode_applied": true,
+      "safety_line": "1 sentence boundary line",
+      "best_question": "1 sentence question?",
       "suggestions": [
         {
           "label": "short label",
@@ -100,7 +106,31 @@ export function buildMessages(args: PromptBuildArgs): GroqMessage[] {
           "emotion_preview": ["calm" | "warm" | "confident" | "friendly" | "neutral"]
         }
       ]
-    }`,
+    }`
+    : `{
+      "suggestions": [
+        {
+          "label": "short label",
+          "text": "the message to send",
+          "why_it_works": "1 sentence",
+          "emotion_preview": ["calm" | "warm" | "confident" | "friendly" | "neutral"]
+        }
+      ]
+    }`;
+
+  const system = [
+    "You are MoodMora, an assistant that drafts emotionally intelligent, low-conflict messages.",
+    "IMPORTANT OUTPUT RULES:",
+    "- Return ONLY one valid JSON object.",
+    "- No markdown, no code fences, no extra commentary.",
+    `- You must return exactly ${args.suggestionCount} suggestions.`,
+    "- Keep the messages short, calm, and low-pressure.",
+    languageHint,
+    hardModeShape,
+    datingHint,
+    safetyBlock,
+    "JSON Schema (shape):",
+    jsonShape,
   ].join("\n");
 
   const user =

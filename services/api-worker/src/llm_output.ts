@@ -6,6 +6,14 @@ type ValidationIssue = {
   message: string;
 };
 
+export type LlmParsedOutput = {
+  suggestions: Suggestion[];
+  // Phase 4 Hard Mode (optional unless expected)
+  hard_mode_applied?: boolean;
+  safety_line?: string;
+  best_question?: string;
+};
+
 function preview(s: string, n = 240): string {
   const t = String(s ?? "");
   return t.length <= n ? t : t.slice(0, n) + "…";
@@ -38,15 +46,23 @@ function extractFirstJSONObject(raw: string): string | null {
   return null;
 }
 
-function validateParsedOutput(parsed: unknown, count: number): { ok: true } | { ok: false; errors: ValidationIssue[] } {
+function validateParsedOutput(
+  parsed: unknown,
+  count: number,
+  opts: { requireHardModeFields: boolean }
+): { ok: true } | { ok: false; errors: ValidationIssue[] } {
   const errors: ValidationIssue[] = [];
 
   if (!isPlainObject(parsed)) {
     return { ok: false, errors: [{ path: "", message: "root must be an object" }] };
   }
 
-  if (!hasOnlyKeys(parsed, ["suggestions"])) {
-    errors.push({ path: "", message: "additional properties are not allowed (only: suggestions)" });
+  const allowedRootKeys = ["suggestions", "hard_mode_applied", "safety_line", "best_question"];
+  if (!hasOnlyKeys(parsed, allowedRootKeys)) {
+    errors.push({
+      path: "",
+      message: `additional properties are not allowed (only: ${allowedRootKeys.join(", ")})`,
+    });
   }
 
   const suggestions = (parsed as any).suggestions;
@@ -89,11 +105,42 @@ function validateParsedOutput(parsed: unknown, count: number): { ok: true } | { 
     }
   }
 
+  // Hard mode fields validation (only when required by caller)
+  if (opts.requireHardModeFields) {
+    const hm = (parsed as any).hard_mode_applied;
+    const safetyLine = (parsed as any).safety_line;
+    const bestQ = (parsed as any).best_question;
+
+    if (hm !== true) {
+      errors.push({ path: "/hard_mode_applied", message: "must be true in hard mode" });
+    }
+    if (typeof safetyLine !== "string" || !safetyLine.trim()) {
+      errors.push({ path: "/safety_line", message: "must be a non-empty string in hard mode" });
+    }
+    if (typeof bestQ !== "string" || !bestQ.trim()) {
+      errors.push({ path: "/best_question", message: "must be a non-empty string in hard mode" });
+    }
+  } else {
+    // If present, still type-check lightly
+    const hm = (parsed as any).hard_mode_applied;
+    if (hm !== undefined && typeof hm !== "boolean") {
+      errors.push({ path: "/hard_mode_applied", message: "must be a boolean" });
+    }
+    const safetyLine = (parsed as any).safety_line;
+    if (safetyLine !== undefined && (typeof safetyLine !== "string" || !safetyLine.trim())) {
+      errors.push({ path: "/safety_line", message: "must be a non-empty string" });
+    }
+    const bestQ = (parsed as any).best_question;
+    if (bestQ !== undefined && (typeof bestQ !== "string" || !bestQ.trim())) {
+      errors.push({ path: "/best_question", message: "must be a non-empty string" });
+    }
+  }
+
   return errors.length ? { ok: false, errors } : { ok: true };
 }
 
 export type ParseValidateResult =
-  | { ok: true; parsed: { suggestions: Suggestion[] }; extracted_from_raw: boolean }
+  | { ok: true; parsed: LlmParsedOutput; extracted_from_raw: boolean }
   | {
       ok: false;
       error: "PARSE_ERROR" | "SCHEMA_ERROR";
@@ -102,7 +149,11 @@ export type ParseValidateResult =
       raw_preview: string;
     };
 
-export function parseAndValidateLlmOutput(raw: string, count: number): ParseValidateResult {
+export function parseAndValidateLlmOutput(
+  raw: string,
+  count: number,
+  opts?: { requireHardModeFields?: boolean }
+): ParseValidateResult {
   let extracted = false;
   let parsed: any;
 
@@ -133,7 +184,7 @@ export function parseAndValidateLlmOutput(raw: string, count: number): ParseVali
     }
   }
 
-  const v = validateParsedOutput(parsed, count);
+  const v = validateParsedOutput(parsed, count, { requireHardModeFields: Boolean(opts?.requireHardModeFields) });
   if (!v.ok) {
     return {
       ok: false,
@@ -146,7 +197,7 @@ export function parseAndValidateLlmOutput(raw: string, count: number): ParseVali
 
   return {
     ok: true,
-    parsed: parsed as { suggestions: Suggestion[] },
+    parsed: parsed as LlmParsedOutput,
     extracted_from_raw: extracted,
   };
 }

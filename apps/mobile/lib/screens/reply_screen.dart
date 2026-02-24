@@ -23,7 +23,8 @@ class _ReplyScreenState extends State<ReplyScreen> {
 
   // Phase 3.5 (I'm stuck) — UI state
   bool _iStuckActive = false;
-  String _iStuckGoal = 'Reply friendly'; // Reply friendly | Set boundary | Flirt back | Suggest plan
+  String _iStuckGoal =
+      'Reply friendly'; // Reply friendly | Set boundary | Flirt back | Suggest plan
   String _iStuckVibe = 'Calm'; // Calm | Playful | Direct
   String _iStuckDetail = '';
 
@@ -129,7 +130,9 @@ class _ReplyScreenState extends State<ReplyScreen> {
   Future<void> _copy(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Copied')));
   }
 
   Widget _datingChipRow() {
@@ -151,16 +154,40 @@ class _ReplyScreenState extends State<ReplyScreen> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            _ModeChip(label: 'Off', value: 'off', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
-            _ModeChip(label: 'Subtle', value: 'subtle', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
-            _ModeChip(label: 'Playful', value: 'playful', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
-            _ModeChip(label: 'Direct', value: 'direct', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
+            _ModeChip(
+              label: 'Off',
+              value: 'off',
+              groupValue: _flirtMode,
+              onSelected: (v) => setState(() => _flirtMode = v),
+            ),
+            _ModeChip(
+              label: 'Subtle',
+              value: 'subtle',
+              groupValue: _flirtMode,
+              onSelected: (v) => setState(() => _flirtMode = v),
+            ),
+            _ModeChip(
+              label: 'Playful',
+              value: 'playful',
+              groupValue: _flirtMode,
+              onSelected: (v) => setState(() => _flirtMode = v),
+            ),
+            _ModeChip(
+              label: 'Direct',
+              value: 'direct',
+              groupValue: _flirtMode,
+              onSelected: (v) => setState(() => _flirtMode = v),
+            ),
           ],
         ),
         const SizedBox(height: 4),
         Text(
-          _flirtMode == 'off' ? 'Normal tone (no flirting).' : 'Dating tone enabled: $_flirtMode',
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          _flirtMode == 'off'
+              ? 'Normal tone (no flirting).'
+              : 'Dating tone enabled: $_flirtMode',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
@@ -192,43 +219,89 @@ class _ReplyScreenState extends State<ReplyScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("I'm stuck", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  const Text(
+                    "I'm stuck",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
                   const SizedBox(height: 12),
 
-                  const Text('Goal', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text(
+                    'Goal',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      ChoiceChip(label: const Text('Reply friendly'), selected: goal == 'Reply friendly', onSelected: (_) => setSheetState(() => goal = 'Reply friendly')),
-                      ChoiceChip(label: const Text('Set boundary'), selected: goal == 'Set boundary', onSelected: (_) => setSheetState(() => goal = 'Set boundary')),
-                      ChoiceChip(label: const Text('Flirt back'), selected: goal == 'Flirt back', onSelected: (_) => setSheetState(() => goal = 'Flirt back')),
-                      ChoiceChip(label: const Text('Suggest plan'), selected: goal == 'Suggest plan', onSelected: (_) => setSheetState(() => goal = 'Suggest plan')),
+                      ChoiceChip(
+                        label: const Text('Reply friendly'),
+                        selected: goal == 'Reply friendly',
+                        onSelected: (_) =>
+                            setSheetState(() => goal = 'Reply friendly'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Set boundary'),
+                        selected: goal == 'Set boundary',
+                        onSelected: (_) =>
+                            setSheetState(() => goal = 'Set boundary'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Flirt back'),
+                        selected: goal == 'Flirt back',
+                        onSelected: (_) =>
+                            setSheetState(() => goal = 'Flirt back'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Suggest plan'),
+                        selected: goal == 'Suggest plan',
+                        onSelected: (_) =>
+                            setSheetState(() => goal = 'Suggest plan'),
+                      ),
                     ],
                   ),
 
                   const SizedBox(height: 12),
-                  const Text('Vibe', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text(
+                    'Vibe',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      ChoiceChip(label: const Text('Calm'), selected: vibe == 'Calm', onSelected: (_) => setSheetState(() => vibe = 'Calm')),
-                      ChoiceChip(label: const Text('Playful'), selected: vibe == 'Playful', onSelected: (_) => setSheetState(() => vibe = 'Playful')),
-                      ChoiceChip(label: const Text('Direct'), selected: vibe == 'Direct', onSelected: (_) => setSheetState(() => vibe = 'Direct')),
+                      ChoiceChip(
+                        label: const Text('Calm'),
+                        selected: vibe == 'Calm',
+                        onSelected: (_) => setSheetState(() => vibe = 'Calm'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Playful'),
+                        selected: vibe == 'Playful',
+                        onSelected: (_) =>
+                            setSheetState(() => vibe = 'Playful'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Direct'),
+                        selected: vibe == 'Direct',
+                        onSelected: (_) => setSheetState(() => vibe = 'Direct'),
+                      ),
                     ],
                   ),
 
                   const SizedBox(height: 12),
-                  const Text('One detail (optional)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text(
+                    'One detail (optional)',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 8),
                   TextField(
                     controller: detailCtrl,
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
-                      hintText: 'e.g., they asked about weekend, they were cold, they joked…',
+                      hintText:
+                          'e.g., they asked about weekend, they were cold, they joked…',
                     ),
                     maxLines: 2,
                   ),
@@ -266,8 +339,11 @@ class _ReplyScreenState extends State<ReplyScreen> {
       _iStuckDetail = result['detail'] ?? _iStuckDetail;
       _iStuckActive = true;
 
-      final detail = (_iStuckDetail.trim().isEmpty) ? '' : ', detail: ${_iStuckDetail.trim()}';
-      _controller.text = "I'm stuck: goal: $_iStuckGoal, vibe: $_iStuckVibe$detail";
+      final detail = (_iStuckDetail.trim().isEmpty)
+          ? ''
+          : ', detail: ${_iStuckDetail.trim()}';
+      _controller.text =
+          "I'm stuck: goal: $_iStuckGoal, vibe: $_iStuckVibe$detail";
     });
 
     _controller.selection = TextSelection.fromPosition(
@@ -286,6 +362,11 @@ class _ReplyScreenState extends State<ReplyScreen> {
         child: const Text("I'm stuck"),
       ),
     );
+  }
+
+  String _suggestionsTitle(ReplyResponse r) {
+    if (r.hardModeApplied) return 'Hard Mode (2 options)';
+    return 'Suggestions';
   }
 
   @override
@@ -331,7 +412,10 @@ class _ReplyScreenState extends State<ReplyScreen> {
                     labelText: 'Output variant',
                   ),
                   items: const [
-                    DropdownMenuItem(value: 'FINGLISH', child: Text('Finglish')),
+                    DropdownMenuItem(
+                      value: 'FINGLISH',
+                      child: Text('Finglish'),
+                    ),
                     DropdownMenuItem(value: 'EN', child: Text('English')),
                   ],
                   onChanged: (v) {
@@ -367,7 +451,9 @@ class _ReplyScreenState extends State<ReplyScreen> {
                           width: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(_iStuckActive ? 'Generate reply' : 'Generate replies'),
+                      : Text(
+                          _iStuckActive ? 'Generate reply' : 'Generate replies',
+                        ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -393,11 +479,22 @@ class _ReplyScreenState extends State<ReplyScreen> {
               voiceMatchScore: _result!.voiceMatchScore,
             ),
             const SizedBox(height: 12),
-            const Text(
-              'Suggestions',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+
+            if (_result!.hardModeApplied) ...[
+              _HardModeCard(
+                safetyLine: _result!.safetyLine,
+                bestQuestion: _result!.bestQuestion,
+                onCopy: _copy,
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            Text(
+              _suggestionsTitle(_result!),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
+
             for (final s in suggestions) ...[
               Card(
                 child: Padding(
@@ -435,6 +532,69 @@ class _ReplyScreenState extends State<ReplyScreen> {
             ],
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _HardModeCard extends StatelessWidget {
+  const _HardModeCard({
+    required this.safetyLine,
+    required this.bestQuestion,
+    required this.onCopy,
+  });
+
+  final String? safetyLine;
+  final String? bestQuestion;
+  final Future<void> Function(String) onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    final sl = (safetyLine ?? '').trim();
+    final bq = (bestQuestion ?? '').trim();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Hard Mode',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+
+            if (sl.isNotEmpty) ...[
+              const Text(
+                'Safety line',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              Text(sl),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () => onCopy(sl),
+                child: const Text('Copy safety line'),
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            if (bq.isNotEmpty) ...[
+              const Text(
+                'Best question',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              Text(bq),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () => onCopy(bq),
+                child: const Text('Copy best question'),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -501,7 +661,9 @@ class _ErrorCardState extends State<_ErrorCard> {
     final msg = widget.message;
     final previewLen = 220;
     final canExpand = msg.length > previewLen;
-    final shown = (!_expanded && canExpand) ? '${msg.substring(0, previewLen)}…' : msg;
+    final shown = (!_expanded && canExpand)
+        ? '${msg.substring(0, previewLen)}…'
+        : msg;
 
     return Card(
       child: Padding(

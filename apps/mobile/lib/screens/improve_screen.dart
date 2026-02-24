@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../app_config.dart';
 import '../models/improve_response.dart';
+import '../models/voice_profile.dart';
 import '../services/api_client.dart';
 import '../services/preset_store.dart';
 import '../services/voice_store.dart';
@@ -24,9 +25,8 @@ class _ImproveScreenState extends State<ImproveScreen> {
 
   // Phase 3.5 (Starter Kit) — UI state
   bool _starterFlowActive = false;
-  String _starterStage =
-      'First message'; // First message | After match | Re-open chat | After date
-  String _starterVibe = 'Funny'; // Cute | Funny | Confident
+  String _starterStage = 'First message';
+  String _starterVibe = 'Funny';
   String _starterDetail = '';
 
   bool _loading = false;
@@ -243,28 +243,28 @@ class _ImproveScreenState extends State<ImproveScreen> {
               label: const Text('Compliment + Question'),
               selected: false,
               onSelected: (_) => _applyStarterTemplate(
-                "Hey! I really liked [something specific about you]. ≡ƒÿä Quick question: what's your favorite [topic] these days?",
+                "Hey! I really liked [something specific about you]. Quick question: what's your favorite [topic] these days?",
               ),
             ),
             ChoiceChip(
               label: const Text('Funny opener'),
               selected: false,
               onSelected: (_) => _applyStarterTemplate(
-                "Serious question ≡ƒÿà: are you more of a [A] person or a [B] person? (IΓÇÖm judging politely.)",
+                "Serious question: are you more of a [A] person or a [B] person? (I'm judging politely.)",
               ),
             ),
             ChoiceChip(
               label: const Text('Shared interest'),
               selected: false,
               onSelected: (_) => _applyStarterTemplate(
-                "I saw youΓÇÖre into [interest]ΓÇöIΓÇÖm curious, how did you get into it?",
+                "I saw you're into [interest]—I'm curious, how did you get into it?",
               ),
             ),
             ChoiceChip(
               label: const Text('Simple hi + hook'),
               selected: false,
               onSelected: (_) => _applyStarterTemplate(
-                "Hey :) HowΓÇÖs your day going? I had to askΓÇöwhatΓÇÖs one thing youΓÇÖre excited about this week?",
+                "Hey :) How's your day going? What's one thing you're excited about this week?",
               ),
             ),
           ],
@@ -304,7 +304,6 @@ class _ImproveScreenState extends State<ImproveScreen> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 12),
-
                   const Text(
                     'Stage',
                     style: TextStyle(fontWeight: FontWeight.w600),
@@ -340,7 +339,6 @@ class _ImproveScreenState extends State<ImproveScreen> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 12),
                   const Text(
                     'Vibe',
@@ -369,7 +367,6 @@ class _ImproveScreenState extends State<ImproveScreen> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 12),
                   const Text(
                     'One detail about them (optional)',
@@ -381,11 +378,10 @@ class _ImproveScreenState extends State<ImproveScreen> {
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
                       hintText:
-                          'e.g., loves hiking, works in design, has a dogΓÇª',
+                          'e.g., loves hiking, works in design, has a dog...',
                     ),
                     maxLines: 2,
                   ),
-
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -460,6 +456,335 @@ class _ImproveScreenState extends State<ImproveScreen> {
   String _suggestionsTitle(ImproveResponse r) {
     if (r.hardModeApplied) return 'Hard Mode (2 options)';
     return _starterFlowActive ? 'Starters' : 'Suggestions';
+  }
+
+  // ---------- Phase 5.6: local voice feedback helpers ----------
+  double _clamp01(double v) => v < 0 ? 0 : (v > 1 ? 1 : v);
+
+  int _wordCount(String s) {
+    final t = s.trim();
+    if (t.isEmpty) return 0;
+    return t.split(RegExp(r'\s+')).where((x) => x.trim().isNotEmpty).length;
+  }
+
+  int _emojiCount(String s) {
+    // naive emoji detect; good enough for feedback loop
+    final r = RegExp(r'[\u2600-\u27BF\uD83C-\uDBFF\uDC00-\uDFFF]');
+    return r.allMatches(s).length;
+  }
+
+  double _measuredBrevity(String text) {
+    final wc = _wordCount(text);
+    if (wc <= 8) return 1.0;
+    if (wc <= 14) return 0.7;
+    if (wc <= 22) return 0.4;
+    return 0.2;
+  }
+
+  double _measuredEmojiRate(String text) {
+    final e = _emojiCount(text);
+    // 0..2 per msg -> 0..1
+    return _clamp01(e / 2.0);
+  }
+
+  bool _containsAny(String text, List<String> tokens) {
+    final low = text.toLowerCase();
+    return tokens.any((t) => low.contains(t));
+  }
+
+  double _measuredFormality(String text) {
+    final tokens = [
+      'please',
+      'kindly',
+      'regards',
+      'sincerely',
+      'dear',
+      'with respect',
+      'lotfan',
+      'ba ehteram',
+    ];
+    return _containsAny(text, tokens) ? 0.8 : 0.3;
+  }
+
+  double _measuredDirectness(String text) {
+    final hedge = [
+      'maybe',
+      'if you want',
+      'up to you',
+      'no worries if',
+      'whenever you can',
+      'age ok',
+      'agar ok',
+      'har vaght',
+    ];
+    return _containsAny(text, hedge) ? 0.35 : 0.7;
+  }
+
+  double _measuredWarmth(String text) {
+    final warm = [
+      'thanks',
+      'thank you',
+      'appreciate',
+      'mersi',
+      'mamnoon',
+      'khoshal',
+      '❤️',
+      '😊',
+      '🙂',
+    ];
+    return _containsAny(text, warm) ? 0.8 : 0.45;
+  }
+
+  double _lerp(double a, double b, double t) => a + (b - a) * t;
+
+  Future<void> _applyVoiceUpdate(
+    VoiceState Function(VoiceState) updater, {
+    String toast = 'Saved to voice profile',
+  }) async {
+    try {
+      final store = VoiceStore();
+      final cur = await store.load();
+      final next = updater(cur);
+      await store.save(next);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(toast)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not save voice profile')),
+      );
+    }
+  }
+
+  Future<void> _likeSuggestion(String text) async {
+    await _applyVoiceUpdate((cur) {
+      final p = cur.profile;
+
+      final targetBrevity = _measuredBrevity(text);
+      final targetEmoji = _measuredEmojiRate(text);
+      final targetFormality = _measuredFormality(text);
+      final targetDirectness = _measuredDirectness(text);
+      final targetWarmth = _measuredWarmth(text);
+
+      final nextProfile = p.copyWith(
+        brevity: _clamp01(_lerp(p.brevity, targetBrevity, 0.18)),
+        emojiRate: _clamp01(_lerp(p.emojiRate, targetEmoji, 0.18)),
+        formality: _clamp01(_lerp(p.formality, targetFormality, 0.18)),
+        directness: _clamp01(_lerp(p.directness, targetDirectness, 0.18)),
+        warmth: _clamp01(_lerp(p.warmth, targetWarmth, 0.18)),
+      );
+
+      return VoiceState(
+        enabled: true,
+        variant: cur.variant,
+        profile: nextProfile,
+      );
+    }, toast: 'Saved (more like this)');
+  }
+
+  Future<void> _dislikeSuggestion(String text) async {
+    await _applyVoiceUpdate((cur) {
+      final p = cur.profile;
+
+      final targetBrevity = _measuredBrevity(text);
+      final targetEmoji = _measuredEmojiRate(text);
+      final targetFormality = _measuredFormality(text);
+      final targetDirectness = _measuredDirectness(text);
+      final targetWarmth = _measuredWarmth(text);
+
+      // move away from target
+      double away(double current, double target) {
+        final dir = current >= target ? 1 : -1;
+        return _clamp01(current + dir * 0.12);
+      }
+
+      final nextProfile = p.copyWith(
+        brevity: away(p.brevity, targetBrevity),
+        emojiRate: away(p.emojiRate, targetEmoji),
+        formality: away(p.formality, targetFormality),
+        directness: away(p.directness, targetDirectness),
+        warmth: away(p.warmth, targetWarmth),
+      );
+
+      return VoiceState(
+        enabled: true,
+        variant: cur.variant,
+        profile: nextProfile,
+      );
+    }, toast: 'Saved (less like this)');
+  }
+
+  Future<void> _adjustChip({
+    required String label,
+    required VoiceProfile Function(VoiceProfile) mutate,
+  }) async {
+    await _applyVoiceUpdate((cur) {
+      final nextProfile = mutate(cur.profile);
+      return VoiceState(
+        enabled: true,
+        variant: cur.variant,
+        profile: nextProfile,
+      );
+    }, toast: 'Saved: $label');
+  }
+
+  Future<void> _avoidPhraseDialog() async {
+    final ctrl = TextEditingController();
+    final phrase = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Avoid phrase'),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            hintText: 'e.g., lotfan',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+    final p = (phrase ?? '').trim();
+    if (p.isEmpty) return;
+
+    await _applyVoiceUpdate((cur) {
+      final list = cur.profile.doNotUse.toList();
+      if (!list.contains(p)) list.add(p);
+      final nextProfile = cur.profile.copyWith(doNotUse: list);
+      return VoiceState(
+        enabled: true,
+        variant: cur.variant,
+        profile: nextProfile,
+      );
+    }, toast: 'Saved: avoid "$p"');
+  }
+
+  Widget _voiceFeedbackRow(String text) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            IconButton(
+              tooltip: 'More like this',
+              onPressed: () => _likeSuggestion(text),
+              icon: const Icon(Icons.thumb_up_alt_outlined),
+            ),
+            IconButton(
+              tooltip: 'Less like this',
+              onPressed: () => _dislikeSuggestion(text),
+              icon: const Icon(Icons.thumb_down_alt_outlined),
+            ),
+            const Spacer(),
+            OutlinedButton(
+              onPressed: () => _copy(text),
+              child: const Text('Copy'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ActionChip(
+              label: const Text('Shorter'),
+              onPressed: () => _adjustChip(
+                label: 'Shorter',
+                mutate: (p) => p.copyWith(brevity: _clamp01(p.brevity + 0.08)),
+              ),
+            ),
+            ActionChip(
+              label: const Text('Longer'),
+              onPressed: () => _adjustChip(
+                label: 'Longer',
+                mutate: (p) => p.copyWith(brevity: _clamp01(p.brevity - 0.08)),
+              ),
+            ),
+            ActionChip(
+              label: const Text('Warmer'),
+              onPressed: () => _adjustChip(
+                label: 'Warmer',
+                mutate: (p) => p.copyWith(warmth: _clamp01(p.warmth + 0.08)),
+              ),
+            ),
+            ActionChip(
+              label: const Text('Colder'),
+              onPressed: () => _adjustChip(
+                label: 'Colder',
+                mutate: (p) => p.copyWith(warmth: _clamp01(p.warmth - 0.08)),
+              ),
+            ),
+            ActionChip(
+              label: const Text('More direct'),
+              onPressed: () => _adjustChip(
+                label: 'More direct',
+                mutate: (p) =>
+                    p.copyWith(directness: _clamp01(p.directness + 0.08)),
+              ),
+            ),
+            ActionChip(
+              label: const Text('Softer'),
+              onPressed: () => _adjustChip(
+                label: 'Softer',
+                mutate: (p) =>
+                    p.copyWith(directness: _clamp01(p.directness - 0.08)),
+              ),
+            ),
+            ActionChip(
+              label: const Text('More formal'),
+              onPressed: () => _adjustChip(
+                label: 'More formal',
+                mutate: (p) =>
+                    p.copyWith(formality: _clamp01(p.formality + 0.08)),
+              ),
+            ),
+            ActionChip(
+              label: const Text('More casual'),
+              onPressed: () => _adjustChip(
+                label: 'More casual',
+                mutate: (p) =>
+                    p.copyWith(formality: _clamp01(p.formality - 0.08)),
+              ),
+            ),
+            ActionChip(
+              label: const Text('More emoji'),
+              onPressed: () => _adjustChip(
+                label: 'More emoji',
+                mutate: (p) =>
+                    p.copyWith(emojiRate: _clamp01(p.emojiRate + 0.08)),
+              ),
+            ),
+            ActionChip(
+              label: const Text('Less emoji'),
+              onPressed: () => _adjustChip(
+                label: 'Less emoji',
+                mutate: (p) =>
+                    p.copyWith(emojiRate: _clamp01(p.emojiRate - 0.08)),
+              ),
+            ),
+            ActionChip(
+              label: const Text('Avoid phrase...'),
+              onPressed: _avoidPhraseDialog,
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   @override
@@ -609,15 +934,8 @@ class _ImproveScreenState extends State<ImproveScreen> {
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          OutlinedButton(
-                            onPressed: () => _copy(suggestions[i].text),
-                            child: const Text('Copy'),
-                          ),
-                        ],
-                      ),
+                      const SizedBox(height: 10),
+                      _voiceFeedbackRow(suggestions[i].text),
                     ],
                   ),
                 ),
@@ -658,7 +976,6 @@ class _HardModeCard extends StatelessWidget {
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
-
             if (sl.isNotEmpty) ...[
               const Text(
                 'Safety line',
@@ -673,7 +990,6 @@ class _HardModeCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
             ],
-
             if (bq.isNotEmpty) ...[
               const Text(
                 'Best question',
@@ -756,7 +1072,7 @@ class _ErrorCardState extends State<_ErrorCard> {
     final previewLen = 220;
     final canExpand = msg.length > previewLen;
     final shown = (!_expanded && canExpand)
-        ? '${msg.substring(0, previewLen)}ΓÇª'
+        ? '${msg.substring(0, previewLen)}...'
         : msg;
 
     return Card(
@@ -824,11 +1140,11 @@ class _RiskCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Risk: $level ($score) ΓÇó Voice match: $voiceMatchScore',
+              'Risk: $level ($score) • Voice match: $voiceMatchScore',
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
-            for (final r in reasons) Text('ΓÇó $r'),
+            for (final r in reasons) Text('• $r'),
           ],
         ),
       ),

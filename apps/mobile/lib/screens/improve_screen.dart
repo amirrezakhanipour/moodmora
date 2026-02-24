@@ -5,6 +5,7 @@ import '../app_config.dart';
 import '../models/improve_response.dart';
 import '../services/api_client.dart';
 import '../services/preset_store.dart';
+import '../services/voice_store.dart';
 
 class ImproveScreen extends StatefulWidget {
   const ImproveScreen({super.key});
@@ -107,7 +108,18 @@ class _ImproveScreenState extends State<ImproveScreen> {
       input['flirt_mode'] = _flirtMode;
     }
 
-    final body = {'input': input};
+    final body = <String, dynamic>{'input': input};
+
+    // Phase 5: Build My Voice (local-first)
+    // If voice is enabled locally, attach root-level `voice` object to request.
+    try {
+      final voiceState = await VoiceStore().load();
+      if (voiceState.enabled) {
+        body['voice'] = voiceState.toJson();
+      }
+    } catch (_) {
+      // Never block request if local storage fails.
+    }
 
     try {
       final env = await api.postEnvelope(
@@ -231,28 +243,28 @@ class _ImproveScreenState extends State<ImproveScreen> {
               label: const Text('Compliment + Question'),
               selected: false,
               onSelected: (_) => _applyStarterTemplate(
-                "Hey! I really liked [something specific about you]. 😄 Quick question: what's your favorite [topic] these days?",
+                "Hey! I really liked [something specific about you]. ≡ƒÿä Quick question: what's your favorite [topic] these days?",
               ),
             ),
             ChoiceChip(
               label: const Text('Funny opener'),
               selected: false,
               onSelected: (_) => _applyStarterTemplate(
-                "Serious question 😅: are you more of a [A] person or a [B] person? (I’m judging politely.)",
+                "Serious question ≡ƒÿà: are you more of a [A] person or a [B] person? (IΓÇÖm judging politely.)",
               ),
             ),
             ChoiceChip(
               label: const Text('Shared interest'),
               selected: false,
               onSelected: (_) => _applyStarterTemplate(
-                "I saw you’re into [interest]—I’m curious, how did you get into it?",
+                "I saw youΓÇÖre into [interest]ΓÇöIΓÇÖm curious, how did you get into it?",
               ),
             ),
             ChoiceChip(
               label: const Text('Simple hi + hook'),
               selected: false,
               onSelected: (_) => _applyStarterTemplate(
-                "Hey :) How’s your day going? I had to ask—what’s one thing you’re excited about this week?",
+                "Hey :) HowΓÇÖs your day going? I had to askΓÇöwhatΓÇÖs one thing youΓÇÖre excited about this week?",
               ),
             ),
           ],
@@ -369,7 +381,7 @@ class _ImproveScreenState extends State<ImproveScreen> {
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
                       hintText:
-                          'e.g., loves hiking, works in design, has a dog…',
+                          'e.g., loves hiking, works in design, has a dogΓÇª',
                     ),
                     maxLines: 2,
                   ),
@@ -744,7 +756,7 @@ class _ErrorCardState extends State<_ErrorCard> {
     final previewLen = 220;
     final canExpand = msg.length > previewLen;
     final shown = (!_expanded && canExpand)
-        ? '${msg.substring(0, previewLen)}…'
+        ? '${msg.substring(0, previewLen)}ΓÇª'
         : msg;
 
     return Card(
@@ -812,11 +824,11 @@ class _RiskCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Risk: $level ($score) • Voice match: $voiceMatchScore',
+              'Risk: $level ($score) ΓÇó Voice match: $voiceMatchScore',
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
-            for (final r in reasons) Text('• $r'),
+            for (final r in reasons) Text('ΓÇó $r'),
           ],
         ),
       ),

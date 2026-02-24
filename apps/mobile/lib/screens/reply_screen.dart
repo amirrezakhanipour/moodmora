@@ -5,6 +5,7 @@ import '../app_config.dart';
 import '../models/reply_response.dart';
 import '../services/api_client.dart';
 import '../services/preset_store.dart';
+import '../services/voice_store.dart';
 
 class ReplyScreen extends StatefulWidget {
   const ReplyScreen({super.key});
@@ -102,7 +103,18 @@ class _ReplyScreenState extends State<ReplyScreen> {
       input['flirt_mode'] = _flirtMode;
     }
 
-    final body = {'input': input};
+    final body = <String, dynamic>{'input': input};
+
+    // Phase 5: Build My Voice (local-first)
+    // If voice is enabled locally, attach root-level `voice` object to request.
+    try {
+      final voiceState = await VoiceStore().load();
+      if (voiceState.enabled) {
+        body['voice'] = voiceState.toJson();
+      }
+    } catch (_) {
+      // Never block request if local storage fails.
+    }
 
     try {
       final env = await api.postEnvelope(
@@ -301,7 +313,7 @@ class _ReplyScreenState extends State<ReplyScreen> {
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
                       hintText:
-                          'e.g., they asked about weekend, they were cold, they joked…',
+                          'e.g., they asked about weekend, they were cold, they jokedΓÇª',
                     ),
                     maxLines: 2,
                   ),
@@ -662,7 +674,7 @@ class _ErrorCardState extends State<_ErrorCard> {
     final previewLen = 220;
     final canExpand = msg.length > previewLen;
     final shown = (!_expanded && canExpand)
-        ? '${msg.substring(0, previewLen)}…'
+        ? '${msg.substring(0, previewLen)}ΓÇª'
         : msg;
 
     return Card(
@@ -730,11 +742,11 @@ class _RiskCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Risk: $level ($score) • Voice match: $voiceMatchScore',
+              'Risk: $level ($score) ΓÇó Voice match: $voiceMatchScore',
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
-            for (final r in reasons) Text('• $r'),
+            for (final r in reasons) Text('ΓÇó $r'),
           ],
         ),
       ),

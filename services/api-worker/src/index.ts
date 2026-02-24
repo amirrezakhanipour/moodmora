@@ -7,6 +7,7 @@ import { validateEnvelopeContract } from "./contract_validate";
 import { classifyInput } from "./safety_min";
 import { precheckText } from "./risk/precheck";
 import type { Suggestion } from "./types";
+import { applyContactToVoice, parseContact, styleAppliedSummary, type ContactSnapshot } from "./contact_style";
 
 type Status = "ok" | "blocked" | "error";
 type ErrorCode = "NOT_FOUND" | "VALIDATION_ERROR" | "INTERNAL_ERROR" | "SAFETY_BLOCK" | "CONTRACT_ERROR";
@@ -211,6 +212,9 @@ async function generateSuggestionsWithGroq(args: {
 
   // Phase 5 — Build My Voice (optional/additive)
   voice?: VoiceInput;
+
+  // Phase 6 — Contact snapshot (optional/additive)
+  contact?: ContactSnapshot;
 }): Promise<{
   suggestions: Suggestion[];
   safety_line?: string;
@@ -240,6 +244,7 @@ async function generateSuggestionsWithGroq(args: {
     datingVibe: args.datingVibe,
     safetyHints: args.safetyHints,
     voice: args.voice,
+    contact: args.contact,
   });
 
   const t0 = nowMs();
@@ -334,6 +339,15 @@ async function generateSuggestionsWithGroq(args: {
   );
 }
 
+function appliedContactPayload(contact?: ContactSnapshot): any | undefined {
+  if (!contact) return undefined;
+  return {
+    id: contact.id,
+    display_name: contact.display_name,
+    relation_tag: contact.relation_tag,
+  };
+}
+
 export default {
   async fetch(request: Request, env?: WorkerEnv): Promise<Response> {
     const safeEnv = env ?? {};
@@ -409,6 +423,10 @@ export default {
       // Phase 5: voice (optional/additive)
       const voice = parseVoice(body);
 
+      // Phase 6: contact snapshot (optional/additive)
+      const contact = parseContact(body);
+      const { effectiveVoice } = applyContactToVoice({ voice, contact });
+
       // Phase 3.5: smart defaults
       const flirtModeRaw = sanitizeEnum(body?.input?.flirt_mode, ALLOWED_FLIRT_MODE) ?? "off";
       const datingStage = sanitizeEnum(body?.input?.dating_stage, ALLOWED_DATING_STAGE);
@@ -469,10 +487,12 @@ export default {
           datingStage,
           datingVibe,
           safetyHints,
-          voice,
+          voice: effectiveVoice ?? voice,
+          contact,
         });
 
-        const voiceScore = computeVoiceMatchScore(voice, out.suggestions);
+        // Voice score uses EFFECTIVE voice (contact offsets + forbidden merge) when voice enabled
+        const voiceScore = computeVoiceMatchScore(effectiveVoice ?? voice, out.suggestions);
 
         const baseMeta = buildBaseMeta({
           env: safeEnv,
@@ -489,6 +509,11 @@ export default {
           risk: { level: risk.level, score: risk.score, reasons: risk.reasons },
           suggestions: out.suggestions,
         };
+
+        const applied = appliedContactPayload(contact);
+        const summary = styleAppliedSummary(contact);
+        if (applied) data.applied_contact = applied;
+        if (summary) data.style_applied_summary = summary;
 
         if (hardModeApplied) {
           data.hard_mode_applied = true;
@@ -557,6 +582,10 @@ export default {
       // Phase 5: voice (optional/additive)
       const voice = parseVoice(body);
 
+      // Phase 6: contact snapshot (optional/additive)
+      const contact = parseContact(body);
+      const { effectiveVoice } = applyContactToVoice({ voice, contact });
+
       // Phase 3.5: smart defaults
       const flirtModeRaw = sanitizeEnum(body?.input?.flirt_mode, ALLOWED_FLIRT_MODE) ?? "off";
       const datingStage = sanitizeEnum(body?.input?.dating_stage, ALLOWED_DATING_STAGE);
@@ -617,10 +646,11 @@ export default {
           datingStage,
           datingVibe,
           safetyHints,
-          voice,
+          voice: effectiveVoice ?? voice,
+          contact,
         });
 
-        const voiceScore = computeVoiceMatchScore(voice, out.suggestions);
+        const voiceScore = computeVoiceMatchScore(effectiveVoice ?? voice, out.suggestions);
 
         const baseMeta = buildBaseMeta({
           env: safeEnv,
@@ -637,6 +667,11 @@ export default {
           risk: { level: risk.level, score: risk.score, reasons: risk.reasons },
           suggestions: out.suggestions,
         };
+
+        const applied = appliedContactPayload(contact);
+        const summary = styleAppliedSummary(contact);
+        if (applied) data.applied_contact = applied;
+        if (summary) data.style_applied_summary = summary;
 
         if (hardModeApplied) {
           data.hard_mode_applied = true;

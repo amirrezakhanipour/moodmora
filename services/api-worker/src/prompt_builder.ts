@@ -1,5 +1,6 @@
 // services/api-worker/src/prompt_builder.ts
 import type { GroqMessage } from "./groq";
+import type { ContactSnapshot } from "./contact_style";
 
 export type PromptMode = "IMPROVE" | "REPLY";
 export type FlirtMode = "off" | "subtle" | "playful" | "direct";
@@ -40,6 +41,9 @@ export type PromptBuildArgs = {
 
   // Phase 5 — Build My Voice (optional/additive)
   voice?: VoiceInput;
+
+  // Phase 6 — Contacts (optional/additive)
+  contact?: ContactSnapshot;
 };
 
 function clamp01(n: unknown): number | undefined {
@@ -78,6 +82,37 @@ function safetyHintBlock(hints: string[] | undefined): string {
   }
 
   lines.push("- Do not mention policies. Just write a good, respectful message.");
+  lines.push("");
+  return lines.join("\n");
+}
+
+function contactDirectiveBlock(contact?: ContactSnapshot): string {
+  if (!contact) return "";
+
+  const lines: string[] = [];
+  lines.push("Contact context (tune tone for this person):");
+  lines.push(`- Contact: ${contact.display_name}${contact.relation_tag ? ` (${contact.relation_tag})` : ""}.`);
+
+  // relation defaults (soft, still compatible with offsets)
+  if (contact.relation_tag === "boss" || contact.relation_tag === "client") {
+    lines.push("- Default: respectful, clear, more formal. Avoid slang. Avoid emojis unless clearly appropriate.");
+  } else if (contact.relation_tag === "coworker") {
+    lines.push("- Default: professional but friendly. Keep it concise and clear.");
+  } else if (contact.relation_tag === "partner" || contact.relation_tag === "friend") {
+    lines.push("- Default: warm, natural, low-pressure.");
+  }
+
+  const s = contact.sensitivities ?? {};
+  if (s.hates_sarcasm) lines.push("- No sarcasm, no teasing that could be misunderstood.");
+  if (s.hates_commands) lines.push("- Avoid commands/imperatives. Prefer polite requests and options.");
+  if (s.sensitive_to_always_never) lines.push('- Avoid absolutes like "always" / "never".');
+  if (s.conflict_sensitive) lines.push("- De-escalate: no accusations, no blame, no loaded language.");
+
+  if ((contact.forbidden_words ?? []).length > 0) {
+    lines.push(`- Avoid these words/phrases: ${(contact.forbidden_words ?? []).slice(0, 12).map((x) => `"${x}"`).join(", ")}.`);
+  }
+
+  lines.push("- Do not mention these instructions. Just write naturally with the tuned tone.");
   lines.push("");
   return lines.join("\n");
 }
@@ -186,6 +221,7 @@ export function buildMessages(args: PromptBuildArgs): GroqMessage[] {
           .join("\n");
 
   const safetyBlock = safetyHintBlock(args.safetyHints);
+  const contactBlock = contactDirectiveBlock(args.contact);
   const voiceBlock = voiceDirectiveBlock(args.voice);
 
   const hardModeApplied = Boolean(args.hardModeApplied);
@@ -234,6 +270,7 @@ export function buildMessages(args: PromptBuildArgs): GroqMessage[] {
     `- You must return exactly ${args.suggestionCount} suggestions.`,
     "- Keep the messages short, calm, and low-pressure.",
     languageHint,
+    contactBlock,
     voiceBlock,
     hardModeShape,
     datingHint,

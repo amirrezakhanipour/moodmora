@@ -33,12 +33,20 @@ class ReplyResponse {
     required this.voiceMatchScore,
     required this.risk,
     required this.suggestions,
+    required this.hardModeApplied,
+    required this.safetyLine,
+    required this.bestQuestion,
   });
 
   final String mode;
   final int voiceMatchScore;
   final ReplyRisk risk;
   final List<Suggestion> suggestions;
+
+  // Phase 4 (Hard Mode) — optional/additive
+  final bool hardModeApplied;
+  final String? safetyLine;
+  final String? bestQuestion;
 
   factory ReplyResponse.fromJson(Map<String, dynamic> json) {
     final mode = json['mode'];
@@ -65,11 +73,28 @@ class ReplyResponse {
               .toList()
         : <Suggestion>[];
 
+    // Optional fields (safe defaults)
+    final hmaRaw = json['hard_mode_applied'];
+    final hardModeApplied = (hmaRaw is bool) ? hmaRaw : false;
+
+    final slRaw = json['safety_line'];
+    final safetyLine = (slRaw is String && slRaw.trim().isNotEmpty)
+        ? slRaw
+        : null;
+
+    final bqRaw = json['best_question'];
+    final bestQuestion = (bqRaw is String && bqRaw.trim().isNotEmpty)
+        ? bqRaw
+        : null;
+
     return ReplyResponse(
       mode: mode,
       voiceMatchScore: vms,
       risk: risk,
       suggestions: suggestions,
+      hardModeApplied: hardModeApplied,
+      safetyLine: safetyLine,
+      bestQuestion: bestQuestion,
     );
   }
 }

@@ -23,7 +23,8 @@ class _ImproveScreenState extends State<ImproveScreen> {
 
   // Phase 3.5 (Starter Kit) — UI state
   bool _starterFlowActive = false;
-  String _starterStage = 'First message'; // First message | After match | Re-open chat | After date
+  String _starterStage =
+      'First message'; // First message | After match | Re-open chat | After date
   String _starterVibe = 'Funny'; // Cute | Funny | Confident
   String _starterDetail = '';
 
@@ -63,7 +64,10 @@ class _ImproveScreenState extends State<ImproveScreen> {
   bool get _canSubmit => !_loading && _controller.text.trim().isNotEmpty;
 
   bool get _isEmptyState =>
-      _controller.text.trim().isEmpty && _result == null && _error == null && !_loading;
+      _controller.text.trim().isEmpty &&
+      _result == null &&
+      _error == null &&
+      !_loading;
 
   void _clearAll() {
     setState(() {
@@ -131,7 +135,9 @@ class _ImproveScreenState extends State<ImproveScreen> {
   Future<void> _copy(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Copied')));
   }
 
   // ---------- Dating chip row ----------
@@ -154,16 +160,40 @@ class _ImproveScreenState extends State<ImproveScreen> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            _ModeChip(label: 'Off', value: 'off', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
-            _ModeChip(label: 'Subtle', value: 'subtle', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
-            _ModeChip(label: 'Playful', value: 'playful', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
-            _ModeChip(label: 'Direct', value: 'direct', groupValue: _flirtMode, onSelected: (v) => setState(() => _flirtMode = v)),
+            _ModeChip(
+              label: 'Off',
+              value: 'off',
+              groupValue: _flirtMode,
+              onSelected: (v) => setState(() => _flirtMode = v),
+            ),
+            _ModeChip(
+              label: 'Subtle',
+              value: 'subtle',
+              groupValue: _flirtMode,
+              onSelected: (v) => setState(() => _flirtMode = v),
+            ),
+            _ModeChip(
+              label: 'Playful',
+              value: 'playful',
+              groupValue: _flirtMode,
+              onSelected: (v) => setState(() => _flirtMode = v),
+            ),
+            _ModeChip(
+              label: 'Direct',
+              value: 'direct',
+              groupValue: _flirtMode,
+              onSelected: (v) => setState(() => _flirtMode = v),
+            ),
           ],
         ),
         const SizedBox(height: 4),
         Text(
-          _flirtMode == 'off' ? 'Normal tone (no flirting).' : 'Dating tone enabled: $_flirtMode',
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          _flirtMode == 'off'
+              ? 'Normal tone (no flirting).'
+              : 'Dating tone enabled: $_flirtMode',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
@@ -201,14 +231,14 @@ class _ImproveScreenState extends State<ImproveScreen> {
               label: const Text('Compliment + Question'),
               selected: false,
               onSelected: (_) => _applyStarterTemplate(
-                "Hey! I really liked [something specific about you]. 😊 Quick question: what's your favorite [topic] these days?",
+                "Hey! I really liked [something specific about you]. 😄 Quick question: what's your favorite [topic] these days?",
               ),
             ),
             ChoiceChip(
               label: const Text('Funny opener'),
               selected: false,
               onSelected: (_) => _applyStarterTemplate(
-                "Serious question 😄: are you more of a [A] person or a [B] person? (I’m judging politely.)",
+                "Serious question 😅: are you more of a [A] person or a [B] person? (I’m judging politely.)",
               ),
             ),
             ChoiceChip(
@@ -257,43 +287,89 @@ class _ImproveScreenState extends State<ImproveScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Give me 3 starters', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  const Text(
+                    'Give me 3 starters',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
                   const SizedBox(height: 12),
 
-                  const Text('Stage', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text(
+                    'Stage',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      ChoiceChip(label: const Text('First message'), selected: stage == 'First message', onSelected: (_) => setSheetState(() => stage = 'First message')),
-                      ChoiceChip(label: const Text('After match'), selected: stage == 'After match', onSelected: (_) => setSheetState(() => stage = 'After match')),
-                      ChoiceChip(label: const Text('Re-open chat'), selected: stage == 'Re-open chat', onSelected: (_) => setSheetState(() => stage = 'Re-open chat')),
-                      ChoiceChip(label: const Text('After date'), selected: stage == 'After date', onSelected: (_) => setSheetState(() => stage = 'After date')),
+                      ChoiceChip(
+                        label: const Text('First message'),
+                        selected: stage == 'First message',
+                        onSelected: (_) =>
+                            setSheetState(() => stage = 'First message'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('After match'),
+                        selected: stage == 'After match',
+                        onSelected: (_) =>
+                            setSheetState(() => stage = 'After match'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Re-open chat'),
+                        selected: stage == 'Re-open chat',
+                        onSelected: (_) =>
+                            setSheetState(() => stage = 'Re-open chat'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('After date'),
+                        selected: stage == 'After date',
+                        onSelected: (_) =>
+                            setSheetState(() => stage = 'After date'),
+                      ),
                     ],
                   ),
 
                   const SizedBox(height: 12),
-                  const Text('Vibe', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text(
+                    'Vibe',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      ChoiceChip(label: const Text('Cute'), selected: vibe == 'Cute', onSelected: (_) => setSheetState(() => vibe = 'Cute')),
-                      ChoiceChip(label: const Text('Funny'), selected: vibe == 'Funny', onSelected: (_) => setSheetState(() => vibe = 'Funny')),
-                      ChoiceChip(label: const Text('Confident'), selected: vibe == 'Confident', onSelected: (_) => setSheetState(() => vibe = 'Confident')),
+                      ChoiceChip(
+                        label: const Text('Cute'),
+                        selected: vibe == 'Cute',
+                        onSelected: (_) => setSheetState(() => vibe = 'Cute'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Funny'),
+                        selected: vibe == 'Funny',
+                        onSelected: (_) => setSheetState(() => vibe = 'Funny'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Confident'),
+                        selected: vibe == 'Confident',
+                        onSelected: (_) =>
+                            setSheetState(() => vibe = 'Confident'),
+                      ),
                     ],
                   ),
 
                   const SizedBox(height: 12),
-                  const Text('One detail about them (optional)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text(
+                    'One detail about them (optional)',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 8),
                   TextField(
                     controller: detailCtrl,
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
-                      hintText: 'e.g., loves hiking, works in design, has a dog…',
+                      hintText:
+                          'e.g., loves hiking, works in design, has a dog…',
                     ),
                     maxLines: 2,
                   ),
@@ -331,8 +407,11 @@ class _ImproveScreenState extends State<ImproveScreen> {
       _starterDetail = result['detail'] ?? _starterDetail;
       _starterFlowActive = true;
 
-      final detail = (_starterDetail.trim().isEmpty) ? '' : ', detail: ${_starterDetail.trim()}';
-      _controller.text = 'Starter request: stage: $_starterStage, vibe: $_starterVibe$detail';
+      final detail = (_starterDetail.trim().isEmpty)
+          ? ''
+          : ', detail: ${_starterDetail.trim()}';
+      _controller.text =
+          'Starter request: stage: $_starterStage, vibe: $_starterVibe$detail';
     });
 
     _controller.selection = TextSelection.fromPosition(
@@ -364,6 +443,11 @@ class _ImproveScreenState extends State<ImproveScreen> {
     if (idx == 1) return 'Playful';
     if (idx == 2) return 'Direct';
     return fallback;
+  }
+
+  String _suggestionsTitle(ImproveResponse r) {
+    if (r.hardModeApplied) return 'Hard Mode (2 options)';
+    return _starterFlowActive ? 'Starters' : 'Suggestions';
   }
 
   @override
@@ -410,7 +494,10 @@ class _ImproveScreenState extends State<ImproveScreen> {
                     labelText: 'Output variant',
                   ),
                   items: const [
-                    DropdownMenuItem(value: 'FINGLISH', child: Text('Finglish')),
+                    DropdownMenuItem(
+                      value: 'FINGLISH',
+                      child: Text('Finglish'),
+                    ),
                     DropdownMenuItem(value: 'EN', child: Text('English')),
                   ],
                   onChanged: (v) {
@@ -446,7 +533,9 @@ class _ImproveScreenState extends State<ImproveScreen> {
                           width: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(_starterFlowActive ? 'Generate starters' : 'Improve'),
+                      : Text(
+                          _starterFlowActive ? 'Generate starters' : 'Improve',
+                        ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -472,11 +561,22 @@ class _ImproveScreenState extends State<ImproveScreen> {
               voiceMatchScore: _result!.voiceMatchScore,
             ),
             const SizedBox(height: 12),
+
+            if (_result!.hardModeApplied) ...[
+              _HardModeCard(
+                safetyLine: _result!.safetyLine,
+                bestQuestion: _result!.bestQuestion,
+                onCopy: _copy,
+              ),
+              const SizedBox(height: 12),
+            ],
+
             Text(
-              _starterFlowActive ? 'Starters' : 'Suggestions',
+              _suggestionsTitle(_result!),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
+
             for (int i = 0; i < suggestions.length; i++) ...[
               Card(
                 child: Padding(
@@ -514,6 +614,69 @@ class _ImproveScreenState extends State<ImproveScreen> {
             ],
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _HardModeCard extends StatelessWidget {
+  const _HardModeCard({
+    required this.safetyLine,
+    required this.bestQuestion,
+    required this.onCopy,
+  });
+
+  final String? safetyLine;
+  final String? bestQuestion;
+  final Future<void> Function(String) onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    final sl = (safetyLine ?? '').trim();
+    final bq = (bestQuestion ?? '').trim();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Hard Mode',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+
+            if (sl.isNotEmpty) ...[
+              const Text(
+                'Safety line',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              Text(sl),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () => onCopy(sl),
+                child: const Text('Copy safety line'),
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            if (bq.isNotEmpty) ...[
+              const Text(
+                'Best question',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              Text(bq),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () => onCopy(bq),
+                child: const Text('Copy best question'),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -580,7 +743,9 @@ class _ErrorCardState extends State<_ErrorCard> {
     final msg = widget.message;
     final previewLen = 220;
     final canExpand = msg.length > previewLen;
-    final shown = (!_expanded && canExpand) ? '${msg.substring(0, previewLen)}…' : msg;
+    final shown = (!_expanded && canExpand)
+        ? '${msg.substring(0, previewLen)}…'
+        : msg;
 
     return Card(
       child: Padding(

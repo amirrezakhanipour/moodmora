@@ -4,6 +4,7 @@ import { buildMessages } from "./prompt_builder";
 import { parseAndValidateLlmOutput } from "./llm_output";
 import { validateEnvelopeContract } from "./contract_validate";
 import { classifyInput } from "./safety_min";
+import { precheckText } from "./risk/precheck";
 import type { Suggestion } from "./types";
 
 type Status = "ok" | "blocked" | "error";
@@ -21,8 +22,9 @@ function nowMs(): number {
   return Date.now();
 }
 
-function clampSuggestionCount(hardMode: boolean): number {
-  return hardMode ? 5 : 3;
+function clampSuggestionCount(hardModeApplied: boolean): number {
+  // Contract allows 2..3. Hard Mode must be 2.
+  return hardModeApplied ? 2 : 3;
 }
 
 function modelForEnv(env?: WorkerEnv): string {
@@ -122,15 +124,27 @@ function ensureNonEmptyText(suggestions: Suggestion[]) {
   }
 }
 
-function addStrictJsonReminder(base: GroqMessage[], count: number): GroqMessage[] {
+function addStrictJsonReminder(base: GroqMessage[], count: number, hardModeApplied: boolean): GroqMessage[] {
+  const reminderLines = [
+    "IMPORTANT: Your previous output did NOT match the required JSON shape.",
+    "Return ONLY one valid JSON object, nothing else.",
+    `It MUST include "suggestions" with exactly ${count} items.`,
+    "Root keys allowed: suggestions, hard_mode_applied, safety_line, best_question.",
+    'Each suggestion must have ONLY keys: label, text, why_it_works, emotion_preview.',
+    'emotion_preview MUST be an array of 1-3 non-empty strings.',
+  ];
+
+  if (hardModeApplied) {
+    reminderLines.push('Hard mode is ON: "hard_mode_applied" MUST be true.');
+    reminderLines.push('"safety_line" MUST be a non-empty string.');
+    reminderLines.push('"best_question" MUST be a non-empty string and end with a "?".');
+  }
+
+  reminderLines.push("Do NOT include markdown or commentary. Do NOT wrap in code fences.");
+
   const reminder: GroqMessage = {
     role: "system",
-    content: [
-      "IMPORTANT: Your previous output did NOT match the required JSON shape.",
-      "Return ONLY one valid JSON object, nothing else.",
-      `It MUST include "suggestions" with exactly ${count} items.`,
-      'Do NOT include markdown or commentary. Do NOT wrap in code fences.',
-    ].join("\n"),
+    content: reminderLines.join("\n"),
   };
   return [reminder, ...base];
 }
@@ -139,7 +153,7 @@ async function generateSuggestionsWithGroq(args: {
   env?: WorkerEnv;
   mode: "IMPROVE" | "REPLY";
   variant?: string;
-  hardMode: boolean;
+  hardModeApplied: boolean;
   inputText: string;
 
   // Phase 3.5 (Dating Add-on) — additive/optional
@@ -151,6 +165,8 @@ async function generateSuggestionsWithGroq(args: {
   safetyHints?: string[];
 }): Promise<{
   suggestions: Suggestion[];
+  safety_line?: string;
+  best_question?: string;
   usage: unknown;
   parse_ok: boolean;
   schema_ok: boolean;
@@ -160,14 +176,18 @@ async function generateSuggestionsWithGroq(args: {
   const apiKey = args.env?.GROQ_API_KEY?.trim();
   if (!apiKey) throw new Error("MISSING_GROQ_API_KEY");
 
-  const count = clampSuggestionCount(args.hardMode);
+  const count = clampSuggestionCount(args.hardModeApplied);
+
+  // Phase 4 rule: when hard mode is applied, suppress flirt ladder
+  const flirtMode = args.hardModeApplied ? "off" : args.flirtMode;
 
   const baseMessages = buildMessages({
     mode: args.mode,
     inputText: args.inputText,
     suggestionCount: count,
     outputVariant: args.variant,
-    flirtMode: args.flirtMode,
+    hardModeApplied: args.hardModeApplied,
+    flirtMode,
     datingStage: args.datingStage,
     datingVibe: args.datingVibe,
     safetyHints: args.safetyHints,
@@ -185,12 +205,14 @@ async function generateSuggestionsWithGroq(args: {
   });
   const latency1 = nowMs() - t0;
 
-  const r1 = parseAndValidateLlmOutput(first.content, count);
+  const r1 = parseAndValidateLlmOutput(first.content, count, { requireHardModeFields: args.hardModeApplied });
   if (r1.ok) {
     const normalized = normalizeSuggestions(r1.parsed.suggestions);
     ensureNonEmptyText(normalized);
     return {
       suggestions: normalized,
+      safety_line: r1.parsed.safety_line,
+      best_question: r1.parsed.best_question,
       usage: { ...(first.usage as any), latency_ms: latency1 },
       parse_ok: true,
       schema_ok: true,
@@ -203,7 +225,7 @@ async function generateSuggestionsWithGroq(args: {
   const second = await groqChatCompletion({
     apiKey,
     model: modelForEnv(args.env),
-    messages: addStrictJsonReminder(baseMessages, count),
+    messages: addStrictJsonReminder(baseMessages, count, args.hardModeApplied),
     temperature: 0.2,
     maxTokens: 700,
     timeoutMs: timeoutMsForEnv(args.env),
@@ -211,23 +233,56 @@ async function generateSuggestionsWithGroq(args: {
   });
   const latency2 = nowMs() - t1;
 
-  const r2 = parseAndValidateLlmOutput(second.content, count);
-  if (!r2.ok) {
-    throw new Error(
-      `LLM_OUTPUT_INVALID: ${r2.error} extracted=${r2.extracted_from_raw} preview=${(r2.raw_preview ?? "").toString()}`
-    );
+  const r2 = parseAndValidateLlmOutput(second.content, count, { requireHardModeFields: args.hardModeApplied });
+  if (r2.ok) {
+    const normalized = normalizeSuggestions(r2.parsed.suggestions);
+    ensureNonEmptyText(normalized);
+    return {
+      suggestions: normalized,
+      safety_line: r2.parsed.safety_line,
+      best_question: r2.parsed.best_question,
+      usage: { ...(second.usage as any), latency_ms: latency2 },
+      parse_ok: true,
+      schema_ok: true,
+      extracted_from_raw: r2.extracted_from_raw,
+      repair_attempted: true,
+    };
   }
 
-  const normalized = normalizeSuggestions(r2.parsed.suggestions);
-  ensureNonEmptyText(normalized);
-  return {
-    suggestions: normalized,
-    usage: { ...(second.usage as any), latency_ms: latency2 },
-    parse_ok: true,
-    schema_ok: true,
-    extracted_from_raw: r2.extracted_from_raw,
-    repair_attempted: true,
-  };
+  // Third attempt (hard mode only): ultra-strict repair
+  if (args.hardModeApplied) {
+    const t2 = nowMs();
+    const third = await groqChatCompletion({
+      apiKey,
+      model: modelForEnv(args.env),
+      messages: addStrictJsonReminder(addStrictJsonReminder(baseMessages, count, true), count, true),
+      temperature: 0.0,
+      maxTokens: 500,
+      timeoutMs: timeoutMsForEnv(args.env),
+      responseFormat: { type: "json_object" },
+    });
+    const latency3 = nowMs() - t2;
+
+    const r3 = parseAndValidateLlmOutput(third.content, count, { requireHardModeFields: true });
+    if (r3.ok) {
+      const normalized = normalizeSuggestions(r3.parsed.suggestions);
+      ensureNonEmptyText(normalized);
+      return {
+        suggestions: normalized,
+        safety_line: r3.parsed.safety_line,
+        best_question: r3.parsed.best_question,
+        usage: { ...(third.usage as any), latency_ms: latency3 },
+        parse_ok: true,
+        schema_ok: true,
+        extracted_from_raw: r3.extracted_from_raw,
+        repair_attempted: true,
+      };
+    }
+  }
+
+  throw new Error(
+    `LLM_OUTPUT_INVALID: ${r2.error} extracted=${r2.extracted_from_raw} preview=${(r2.raw_preview ?? "").toString()}`
+  );
 }
 
 export default {
@@ -260,10 +315,8 @@ export default {
           requestLatencyMs: nowMs() - tReq0,
         });
 
-         const errors = result.ok ? [] : result.errors;
-         return jsonResponse(ok({ valid: result.ok, errors }, baseMeta), 200);
-
-
+        const errors = result.ok ? [] : result.errors;
+        return jsonResponse(ok({ valid: result.ok, errors }, baseMeta), 200);
       } catch (e: any) {
         const baseMeta = buildBaseMeta({
           env: safeEnv,
@@ -301,13 +354,32 @@ export default {
         return jsonResponse(err("VALIDATION_ERROR", "input.draft_text is required", { path: "input.draft_text" }, baseMeta), 400);
       }
 
-      const hardMode = Boolean(body?.input?.hard_mode);
+      const requestedHardMode = Boolean(body?.input?.hard_mode);
       const variant = body?.input?.output_variant as string | undefined;
 
       // Phase 3.5: smart defaults
-      const flirtMode = sanitizeEnum(body?.input?.flirt_mode, ALLOWED_FLIRT_MODE) ?? "off";
+      const flirtModeRaw = sanitizeEnum(body?.input?.flirt_mode, ALLOWED_FLIRT_MODE) ?? "off";
       const datingStage = sanitizeEnum(body?.input?.dating_stage, ALLOWED_DATING_STAGE);
       const datingVibe = sanitizeEnum(body?.input?.dating_vibe, ALLOWED_DATING_VIBE);
+
+      // Phase 4: precheck (block severe escalation before LLM)
+      const pre = precheckText(draftText);
+      const risk = pre.risk;
+      const hardModeApplied = requestedHardMode || risk.hard_mode_recommended;
+
+      if (pre.action === "block") {
+        const baseMeta = buildBaseMeta({
+          env: safeEnv,
+          requestPath: url.pathname,
+          mode: "IMPROVE",
+          hardMode: true,
+          outputVariant: variant,
+          requestLatencyMs: nowMs() - tReq0,
+          safetyBlocked: true,
+        });
+
+        return jsonResponse(blocked("SAFETY_BLOCK", pre.message, pre.details, { ...baseMeta, risk }), 200);
+      }
 
       const safety = classifyInput(draftText);
       if (safety.action === "block") {
@@ -315,7 +387,7 @@ export default {
           env: safeEnv,
           requestPath: url.pathname,
           mode: "IMPROVE",
-          hardMode,
+          hardMode: hardModeApplied,
           outputVariant: variant,
           requestLatencyMs: nowMs() - tReq0,
           safetyBlocked: true,
@@ -325,7 +397,7 @@ export default {
             "SAFETY_BLOCK",
             "Input was blocked by minimal safety gate.",
             { reasons: safety.reasons },
-            { ...baseMeta, safety: safety.reasons }
+            { ...baseMeta, safety: safety.reasons, risk }
           ),
           200
         );
@@ -339,9 +411,9 @@ export default {
           env: safeEnv,
           mode: "IMPROVE",
           variant,
-          hardMode,
+          hardModeApplied,
           inputText: draftText,
-          flirtMode,
+          flirtMode: flirtModeRaw,
           datingStage,
           datingVibe,
           safetyHints,
@@ -351,29 +423,35 @@ export default {
           env: safeEnv,
           requestPath: url.pathname,
           mode: "IMPROVE",
-          hardMode,
+          hardMode: hardModeApplied,
           outputVariant: variant,
           requestLatencyMs: nowMs() - tReq0,
         });
 
+        const data: any = {
+          mode: "IMPROVE",
+          voice_match_score: 80,
+          risk: { level: risk.level, score: risk.score, reasons: risk.reasons },
+          suggestions: out.suggestions,
+        };
+
+        if (hardModeApplied) {
+          data.hard_mode_applied = true;
+          data.safety_line = String(out.safety_line ?? "").trim() || "Let’s keep this respectful and slow things down.";
+          data.best_question = String(out.best_question ?? "").trim() || "What would help you feel heard right now?";
+        }
+
         return jsonResponse(
-          ok(
-            {
-              mode: "IMPROVE",
-              voice_match_score: 80,
-              risk: { level: "green", score: 20, reasons: ["Mock risk: low"] },
-              suggestions: out.suggestions,
-            },
-            {
-              ...baseMeta,
-              model: modelForEnv(safeEnv),
-              usage: out.usage,
-              parse_ok: out.parse_ok,
-              schema_ok: out.schema_ok,
-              extracted_from_raw: out.extracted_from_raw,
-              repair_attempted: out.repair_attempted,
-            }
-          ),
+          ok(data, {
+            ...baseMeta,
+            model: modelForEnv(safeEnv),
+            usage: out.usage,
+            parse_ok: out.parse_ok,
+            schema_ok: out.schema_ok,
+            extracted_from_raw: out.extracted_from_raw,
+            repair_attempted: out.repair_attempted,
+            hard_mode_requested: requestedHardMode,
+          }),
           200
         );
       } catch (e: any) {
@@ -381,7 +459,7 @@ export default {
           env: safeEnv,
           requestPath: url.pathname,
           mode: "IMPROVE",
-          hardMode,
+          hardMode: hardModeApplied,
           outputVariant: variant,
           requestLatencyMs: nowMs() - tReq0,
         });
@@ -418,13 +496,32 @@ export default {
         );
       }
 
-      const hardMode = Boolean(body?.input?.hard_mode);
+      const requestedHardMode = Boolean(body?.input?.hard_mode);
       const variant = body?.input?.output_variant as string | undefined;
 
       // Phase 3.5: smart defaults
-      const flirtMode = sanitizeEnum(body?.input?.flirt_mode, ALLOWED_FLIRT_MODE) ?? "off";
+      const flirtModeRaw = sanitizeEnum(body?.input?.flirt_mode, ALLOWED_FLIRT_MODE) ?? "off";
       const datingStage = sanitizeEnum(body?.input?.dating_stage, ALLOWED_DATING_STAGE);
       const datingVibe = sanitizeEnum(body?.input?.dating_vibe, ALLOWED_DATING_VIBE);
+
+      // Phase 4: precheck (block severe escalation before LLM)
+      const pre = precheckText(receivedText);
+      const risk = pre.risk;
+      const hardModeApplied = requestedHardMode || risk.hard_mode_recommended;
+
+      if (pre.action === "block") {
+        const baseMeta = buildBaseMeta({
+          env: safeEnv,
+          requestPath: url.pathname,
+          mode: "REPLY",
+          hardMode: true,
+          outputVariant: variant,
+          requestLatencyMs: nowMs() - tReq0,
+          safetyBlocked: true,
+        });
+
+        return jsonResponse(blocked("SAFETY_BLOCK", pre.message, pre.details, { ...baseMeta, risk }), 200);
+      }
 
       const safety = classifyInput(receivedText);
       if (safety.action === "block") {
@@ -432,7 +529,7 @@ export default {
           env: safeEnv,
           requestPath: url.pathname,
           mode: "REPLY",
-          hardMode,
+          hardMode: hardModeApplied,
           outputVariant: variant,
           requestLatencyMs: nowMs() - tReq0,
           safetyBlocked: true,
@@ -442,7 +539,7 @@ export default {
             "SAFETY_BLOCK",
             "Input was blocked by minimal safety gate.",
             { reasons: safety.reasons },
-            { ...baseMeta, safety: safety.reasons }
+            { ...baseMeta, safety: safety.reasons, risk }
           ),
           200
         );
@@ -456,9 +553,9 @@ export default {
           env: safeEnv,
           mode: "REPLY",
           variant,
-          hardMode,
+          hardModeApplied,
           inputText: receivedText,
-          flirtMode,
+          flirtMode: flirtModeRaw,
           datingStage,
           datingVibe,
           safetyHints,
@@ -468,29 +565,35 @@ export default {
           env: safeEnv,
           requestPath: url.pathname,
           mode: "REPLY",
-          hardMode,
+          hardMode: hardModeApplied,
           outputVariant: variant,
           requestLatencyMs: nowMs() - tReq0,
         });
 
+        const data: any = {
+          mode: "REPLY",
+          voice_match_score: 80,
+          risk: { level: risk.level, score: risk.score, reasons: risk.reasons },
+          suggestions: out.suggestions,
+        };
+
+        if (hardModeApplied) {
+          data.hard_mode_applied = true;
+          data.safety_line = String(out.safety_line ?? "").trim() || "Let’s keep this respectful and slow things down.";
+          data.best_question = String(out.best_question ?? "").trim() || "What would help you feel heard right now?";
+        }
+
         return jsonResponse(
-          ok(
-            {
-              mode: "REPLY",
-              voice_match_score: 80,
-              risk: { level: "green", score: 20, reasons: ["Mock risk: low"] },
-              suggestions: out.suggestions,
-            },
-            {
-              ...baseMeta,
-              model: modelForEnv(safeEnv),
-              usage: out.usage,
-              parse_ok: out.parse_ok,
-              schema_ok: out.schema_ok,
-              extracted_from_raw: out.extracted_from_raw,
-              repair_attempted: out.repair_attempted,
-            }
-          ),
+          ok(data, {
+            ...baseMeta,
+            model: modelForEnv(safeEnv),
+            usage: out.usage,
+            parse_ok: out.parse_ok,
+            schema_ok: out.schema_ok,
+            extracted_from_raw: out.extracted_from_raw,
+            repair_attempted: out.repair_attempted,
+            hard_mode_requested: requestedHardMode,
+          }),
           200
         );
       } catch (e: any) {
@@ -498,7 +601,7 @@ export default {
           env: safeEnv,
           requestPath: url.pathname,
           mode: "REPLY",
-          hardMode,
+          hardMode: hardModeApplied,
           outputVariant: variant,
           requestLatencyMs: nowMs() - tReq0,
         });

@@ -44,16 +44,28 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }).toList();
   }
 
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
   Future<void> _openEditor({Contact? contact}) async {
     final result = await Navigator.of(context).push<Contact?>(
       MaterialPageRoute(builder: (_) => EditContactScreen(contact: contact)),
     );
 
-    // result null => cancelled
     if (!mounted) return;
+
+    // result null => cancelled
     if (result != null) {
-      await _store.upsert(result);
+      try {
+        await _store.upsert(result);
+        _toast('Saved');
+      } catch (e) {
+        _toast('Save failed: $e');
+      }
     }
+
     await _load();
   }
 
@@ -77,8 +89,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
 
     if (!mounted) return;
+
     if (ok == true) {
-      await _store.deleteById(c.id);
+      try {
+        await _store.deleteById(c.id);
+        _toast('Deleted');
+      } catch (e) {
+        _toast('Delete failed: $e');
+      }
       await _load();
     }
   }
@@ -88,7 +106,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     if (c.relationTag.isNotEmpty) bits.add(c.relationTag);
     final forb = c.forbiddenWords.length;
     if (forb > 0) bits.add('$forb forbidden');
-    return bits.isEmpty ? '—' : bits.join(' • ');
+    return bits.isEmpty ? '-' : bits.join(' • ');
   }
 
   @override

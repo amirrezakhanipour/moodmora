@@ -10,30 +10,56 @@ class ContactStore {
   Future<List<Contact>> loadAll() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_contactsKey);
-    if (raw == null || raw.trim().isEmpty) return const [];
+
+    // ✅ IMPORTANT: return a mutable list (NOT const [])
+    if (raw == null || raw.trim().isEmpty) return <Contact>[];
+
     try {
       final jsonVal = json.decode(raw);
-      if (jsonVal is List) {
-        final out = <Contact>[];
-        for (final item in jsonVal) {
-          if (item is Map<String, dynamic>) {
-            final c = Contact.fromJson(item);
-            // minimal sanity
-            if (c.id.isNotEmpty && c.displayName.isNotEmpty) out.add(c);
+      if (jsonVal is! List) return <Contact>[];
+
+      final out = <Contact>[];
+      for (final item in jsonVal) {
+        if (item is Map) {
+          final map = Map<String, dynamic>.from(item);
+          final c = Contact.fromJson(map);
+
+          if (c.id.trim().isNotEmpty && c.displayName.trim().isNotEmpty) {
+            out.add(c);
           }
         }
-        return out;
       }
-      return const [];
+
+      out.sort(
+        (a, b) =>
+            a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
+      );
+      return out;
     } catch (_) {
-      return const [];
+      // ✅ mutable list
+      return <Contact>[];
     }
   }
 
   Future<void> saveAll(List<Contact> contacts) async {
     final prefs = await SharedPreferences.getInstance();
-    final list = contacts.map((c) => c.toJson()).toList();
-    await prefs.setString(_contactsKey, json.encode(list));
+
+    final cleaned = contacts
+        .where((c) => c.id.trim().isNotEmpty && c.displayName.trim().isNotEmpty)
+        .toList();
+
+    cleaned.sort(
+      (a, b) =>
+          a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
+    );
+
+    final list = cleaned.map((c) => c.toJson()).toList();
+    final raw = json.encode(list);
+
+    final ok = await prefs.setString(_contactsKey, raw);
+    if (!ok) {
+      throw Exception('SharedPreferences.setString failed for $_contactsKey');
+    }
   }
 
   Future<String?> loadLastSelectedId() async {
@@ -48,18 +74,26 @@ class ContactStore {
     if (id == null || id.trim().isEmpty) {
       await prefs.remove(_lastSelectedKey);
     } else {
-      await prefs.setString(_lastSelectedKey, id.trim());
+      final ok = await prefs.setString(_lastSelectedKey, id.trim());
+      if (!ok) {
+        throw Exception(
+          'SharedPreferences.setString failed for $_lastSelectedKey',
+        );
+      }
     }
   }
 
   Future<void> upsert(Contact contact) async {
-    final all = await loadAll();
+    // ✅ Always work on a mutable copy, even if caller returns an unmodifiable list
+    final all = List<Contact>.from(await loadAll());
+
     final idx = all.indexWhere((c) => c.id == contact.id);
     if (idx >= 0) {
       all[idx] = contact;
     } else {
       all.add(contact);
     }
+
     await saveAll(all);
   }
 

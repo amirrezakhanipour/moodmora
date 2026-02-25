@@ -1,7 +1,5 @@
 import 'dart:math';
-
 import 'package:flutter/material.dart';
-
 import '../models/contact.dart';
 
 class EditContactScreen extends StatefulWidget {
@@ -32,7 +30,9 @@ class _EditContactScreenState extends State<EditContactScreen> {
     final c = widget.contact;
     _id = c?.id ?? _newId();
     _nameCtrl = TextEditingController(text: c?.displayName ?? '');
-    _relation = c?.relationTag.isNotEmpty == true ? c!.relationTag : 'other';
+    _relation = (c?.relationTag ?? '').trim().isNotEmpty
+        ? c!.relationTag
+        : 'other';
     _offsets = c?.styleOffsets ?? ContactStyleOffsets.defaults();
     _sens = c?.sensitivities ?? ContactSensitivities.defaults();
     _forbiddenCtrl = TextEditingController(
@@ -89,7 +89,7 @@ class _EditContactScreenState extends State<EditContactScreen> {
     );
   }
 
-  Future<void> _save() async {
+  void _save() {
     final ok = _formKey.currentState?.validate() ?? false;
     if (!ok) return;
 
@@ -97,7 +97,7 @@ class _EditContactScreenState extends State<EditContactScreen> {
     final forbidden = _parseForbidden(_forbiddenCtrl.text);
 
     final c = Contact(
-      id: _id,
+      id: _id.trim(),
       displayName: name,
       relationTag: _relation,
       styleOffsets: _offsets,
@@ -162,8 +162,8 @@ class _EditContactScreenState extends State<EditContactScreen> {
                 ],
                 onChanged: (v) => setState(() => _relation = v ?? 'other'),
               ),
-              const SizedBox(height: 16),
 
+              const SizedBox(height: 16),
               const Text(
                 'Style offsets',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
@@ -237,7 +237,7 @@ class _EditContactScreenState extends State<EditContactScreen> {
                 onChanged: (v) => setState(
                   () => _sens = _sens.copyWith(sensitiveToAlwaysNever: v),
                 ),
-                title: const Text('Sensitive to “always/never”'),
+                title: const Text('Sensitive to "always/never"'),
               ),
               SwitchListTile(
                 value: _sens.conflictSensitive,
@@ -253,6 +253,7 @@ class _EditContactScreenState extends State<EditContactScreen> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
+
               TextFormField(
                 controller: _forbiddenCtrl,
                 minLines: 2,

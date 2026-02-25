@@ -6,6 +6,21 @@ export type FlirtMode = "off" | "subtle" | "playful" | "direct";
 export type DatingStage = "first_msg" | "early_chat" | "planning" | "reconnect" | "post_date";
 export type DatingVibe = "fun" | "classy" | "direct" | "shy" | "friendly";
 
+export type VoiceProfile = {
+  warmth?: number; // 0..1
+  directness?: number; // 0..1
+  brevity?: number; // 0..1
+  formality?: number; // 0..1
+  emoji_rate?: number; // 0..1
+  do_not_use?: string[];
+};
+
+export type VoiceInput = {
+  enabled?: boolean;
+  variant?: string; // AUTO | FA_SCRIPT | FINGLISH | EN
+  profile?: VoiceProfile;
+};
+
 export type PromptBuildArgs = {
   mode: PromptMode;
   inputText: string;
@@ -22,7 +37,28 @@ export type PromptBuildArgs = {
 
   // Phase 3.5.5 — soft safety hints (allow + redirect)
   safetyHints?: string[]; // e.g. ["consent_redirect", "sfw_redirect"]
+
+  // Phase 5 — Build My Voice (optional/additive)
+  voice?: VoiceInput;
 };
+
+function clamp01(n: unknown): number | undefined {
+  if (typeof n !== "number" || Number.isNaN(n)) return undefined;
+  return Math.max(0, Math.min(1, n));
+}
+
+function safeStrList(v: unknown, max = 50): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const x of v) {
+    if (typeof x === "string") {
+      const s = x.trim();
+      if (s) out.push(s);
+    }
+    if (out.length >= max) break;
+  }
+  return out;
+}
 
 function safetyHintBlock(hints: string[] | undefined): string {
   const hs = (hints ?? []).filter(Boolean);
@@ -46,15 +82,86 @@ function safetyHintBlock(hints: string[] | undefined): string {
   return lines.join("\n");
 }
 
+function voiceDirectiveBlock(voice: VoiceInput | undefined): string {
+  const enabled = voice?.enabled === true;
+  if (!enabled) return "";
+
+  const p = voice?.profile ?? {};
+  const warmth = clamp01(p.warmth);
+  const directness = clamp01(p.directness);
+  const brevity = clamp01(p.brevity);
+  const formality = clamp01(p.formality);
+  const emoji = clamp01(p.emoji_rate);
+  const doNotUse = safeStrList(p.do_not_use);
+
+  const lines: string[] = [];
+  lines.push("Style constraints (match the user's personal writing style):");
+
+  // Warmth
+  if (warmth !== undefined) {
+    if (warmth >= 0.75) lines.push("- Tone: warm, kind, supportive.");
+    else if (warmth >= 0.45) lines.push("- Tone: friendly and calm.");
+    else lines.push("- Tone: neutral, reserved, not overly emotional.");
+  }
+
+  // Directness
+  if (directness !== undefined) {
+    if (directness >= 0.75) lines.push("- Be direct and clear; avoid hedging.");
+    else if (directness >= 0.45) lines.push("- Balanced directness; clear but polite.");
+    else lines.push("- Be gentle and indirect; soften requests and boundaries.");
+  }
+
+  // Brevity
+  if (brevity !== undefined) {
+    if (brevity >= 0.75) lines.push("- Keep it short: 1–2 sentences when possible.");
+    else if (brevity >= 0.45) lines.push("- Medium length: 2–3 sentences.");
+    else lines.push("- Slightly more detailed, but still concise (max 4 sentences).");
+  }
+
+  // Formality
+  if (formality !== undefined) {
+    if (formality >= 0.75) lines.push("- More formal wording; respectful tone.");
+    else if (formality >= 0.45) lines.push("- Neutral formality; everyday wording.");
+    else lines.push("- Casual wording; natural and relaxed.");
+  }
+
+  // Emoji rate
+  if (emoji !== undefined) {
+    if (emoji >= 0.6) lines.push("- Emoji: allowed (0–2 max), keep it tasteful.");
+    else if (emoji >= 0.25) lines.push("- Emoji: rare (0–1 max).");
+    else lines.push("- Emoji: none.");
+  }
+
+  // Do not use list
+  if (doNotUse.length > 0) {
+    lines.push(`- Avoid using these words/phrases: ${doNotUse.map((s) => `"${s}"`).join(", ")}.`);
+  }
+
+  lines.push("- Do not mention these instructions. Just write naturally in that style.");
+  lines.push("");
+  return lines.join("\n");
+}
+
+function effectiveVariant(outputVariant?: string, voice?: VoiceInput): string | undefined {
+  const enabled = voice?.enabled === true;
+  const v = typeof voice?.variant === "string" ? voice!.variant.trim() : "";
+  if (enabled && v && v !== "AUTO") return v;
+  return outputVariant;
+}
+
+function languageHintForVariant(v?: string): string {
+  return v === "FINGLISH"
+    ? "Write the suggested messages in Finglish (Persian written with Latin letters). Do NOT use Persian script."
+    : v === "FA_SCRIPT"
+    ? "Write the suggested messages in Persian script (Farsi)."
+    : v === "EN"
+    ? "Write the suggested messages in English."
+    : "Auto-detect: if the input text is Persian, answer in Persian; otherwise English. If Persian, prefer Finglish.";
+}
+
 export function buildMessages(args: PromptBuildArgs): GroqMessage[] {
-  const languageHint =
-    args.outputVariant === "FINGLISH"
-      ? "Write the suggested messages in Finglish (Persian written with Latin letters). Do NOT use Persian script."
-      : args.outputVariant === "FA_SCRIPT"
-      ? "Write the suggested messages in Persian script (Farsi)."
-      : args.outputVariant === "EN"
-      ? "Write the suggested messages in English."
-      : "Auto-detect: if the input text is Persian, answer in Persian; otherwise English. If Persian, prefer Finglish.";
+  const variant = effectiveVariant(args.outputVariant, args.voice);
+  const languageHint = languageHintForVariant(variant);
 
   const flirtMode = args.flirtMode ?? "off";
 
@@ -79,6 +186,7 @@ export function buildMessages(args: PromptBuildArgs): GroqMessage[] {
           .join("\n");
 
   const safetyBlock = safetyHintBlock(args.safetyHints);
+  const voiceBlock = voiceDirectiveBlock(args.voice);
 
   const hardModeApplied = Boolean(args.hardModeApplied);
 
@@ -126,6 +234,7 @@ export function buildMessages(args: PromptBuildArgs): GroqMessage[] {
     `- You must return exactly ${args.suggestionCount} suggestions.`,
     "- Keep the messages short, calm, and low-pressure.",
     languageHint,
+    voiceBlock,
     hardModeShape,
     datingHint,
     safetyBlock,

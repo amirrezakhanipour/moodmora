@@ -5,5 +5,17 @@
     "output_variant": "FINGLISH",
     "hard_mode": false,
     "contact_id": "contact_demo_01"
+  },
+  "voice": {
+    "enabled": true,
+    "variant": "FINGLISH",
+    "profile": {
+      "warmth": 0.75,
+      "directness": 0.55,
+      "brevity": 0.6,
+      "formality": 0.35,
+      "emoji_rate": 0.15,
+      "do_not_use": ["ba ehteram", "lotfan"]
+    }
   }
 }

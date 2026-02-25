@@ -24,6 +24,27 @@
         },
         "dating_vibe": { "type": "string", "enum": ["fun", "classy", "direct", "shy", "friendly"] }
       }
+    },
+
+    "voice": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "variant": { "type": "string", "enum": ["AUTO", "FA_SCRIPT", "FINGLISH", "EN"] },
+        "profile": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "warmth": { "type": "number", "minimum": 0, "maximum": 1 },
+            "directness": { "type": "number", "minimum": 0, "maximum": 1 },
+            "brevity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "formality": { "type": "number", "minimum": 0, "maximum": 1 },
+            "emoji_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+            "do_not_use": { "type": "array", "items": { "type": "string", "minLength": 1 }, "maxItems": 50 }
+          }
+        }
+      }
     }
   }
 }

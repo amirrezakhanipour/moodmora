@@ -1,4 +1,4 @@
-﻿// services/api-worker/src/llm_output.ts
+// services/api-worker/src/llm_output.ts
 import type { Suggestion } from "./types";
 
 type ValidationIssue = {

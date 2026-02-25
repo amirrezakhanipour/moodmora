@@ -27,7 +27,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openPresetsSheet({bool auto = false}) async {
-    if (!AppConfig.datingPresetsEnabled || !AppConfig.datingAddonEnabled) return;
+    if (!AppConfig.datingPresetsEnabled || !AppConfig.datingAddonEnabled) {
+      return;
+    }
 
     final presets = PresetStore.presets();
     final selected = PresetStore.selected;
@@ -48,19 +50,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Text(
                     auto ? 'Quick dating setup' : 'Dating presets',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'Pick one vibe. You can change it anytime.',
-                    style: TextStyle(color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                    style: TextStyle(
+                      color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 12),
 
                   for (final p in presets) ...[
                     Card(
                       child: ListTile(
-                        title: Text(p.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        title: Text(
+                          p.title,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
                         subtitle: Text(p.description),
                         trailing: (selected?.id == p.id)
                             ? const Icon(Icons.check_circle)
@@ -117,8 +127,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              p == null ? 'No preset selected' : '${p.title} — ${p.description}',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              p == null
+                  ? 'No preset selected'
+                  : '${p.title} — ${p.description}',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 10),
             Row(
@@ -126,6 +140,39 @@ class _HomeScreenState extends State<HomeScreen> {
                 FilledButton(
                   onPressed: () => _openPresetsSheet(),
                   child: Text(p == null ? 'Choose preset' : 'Change preset'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _voiceCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Build My Voice',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Make the suggestions sound more like you.',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                FilledButton(
+                  onPressed: () => Navigator.pushNamed(context, '/voice'),
+                  child: const Text('Open'),
                 ),
               ],
             ),
@@ -148,6 +195,10 @@ class _HomeScreenState extends State<HomeScreen> {
               'Choose a mode',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
             ),
+            const SizedBox(height: 12),
+
+            // Voice card
+            _voiceCard(),
             const SizedBox(height: 12),
 
             // Micro-onboarding/presets card

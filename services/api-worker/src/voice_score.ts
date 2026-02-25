@@ -90,7 +90,7 @@ export function computeVoiceMatchScore(voice: VoiceInput | undefined, suggestion
   // proxies (simple + language-agnostic-ish)
   const formalTokens = ["please", "kindly", "regards", "sincerely", "dear", "with respect", "ba ehteram", "lotfan"];
   const hedgeTokens = ["maybe", "if you want", "up to you", "no worries if", "whenever you can", "agar ok", "age ok", "har vaght"];
-  const warmTokens = ["thanks", "thank you", "appreciate", "khoshal", "mersi", "mamnoon", "dost", "😊", "🙂", "❤️"];
+  const warmTokens = ["thanks", "thank you", "appreciate", "khoshal", "mersi", "mamnoon", "dost", "❤️", "🙏"];
 
   const formalHit = tokenHitRate(texts, formalTokens);
   const hedgeHit = tokenHitRate(texts, hedgeTokens);

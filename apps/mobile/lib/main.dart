@@ -4,6 +4,7 @@ import 'screens/home_screen.dart';
 import 'screens/improve_screen.dart';
 import 'screens/reply_screen.dart';
 import 'screens/voice_screen.dart';
+import 'screens/contacts_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -26,6 +27,7 @@ class MyApp extends StatelessWidget {
         '/improve': (_) => const ImproveScreen(),
         '/reply': (_) => const ReplyScreen(),
         '/voice': (_) => const VoiceScreen(),
+        '/contacts': (_) => const ContactsScreen(),
       },
     );
   }

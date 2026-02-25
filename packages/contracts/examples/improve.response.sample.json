@@ -10,10 +10,12 @@
       "score": 18,
       "reasons": ["Apology is clear", "No blaming language"]
     },
+    "applied_contact": { "id": "contact_demo_01", "display_name": "Sara", "relation_tag": "partner" },
+    "style_applied_summary": "Warmter, kamtar rasmi, emoji ye kam bishtar",
     "suggestions": [
       {
         "label": "Calm & clear",
-        "text": "Hey, inam begam ke be khater-e diruz sorry. vaghean ziad stress داشتم و tone-am بد dar oomad. mikhay ye vaght koochik sohbat konim?",
+        "text": "Hey, inam begam ke be khater-e diruz sorry. vaghean ziad stress داشتم va tone-am bad dar oomad. mikhay ye vaght koochik sohbat konim?",
         "why_it_works": "Owns the tone, keeps it simple, invites a short chat.",
         "emotion_preview": ["calm", "respectful"]
       },
@@ -25,7 +27,7 @@
       },
       {
         "label": "Warm",
-        "text": "Hey ❤️ sorry baraye diruz. doost nadaram bebinam beynemun tension bemune. age ok-e, ye vaght zood 5 daghighe gap bezanim.",
+        "text": "Hey ❤️ sorry baraye diruz. doost nadaram beynemun tension bemune. age ok-e, ye vaght zood 5 daghighe gap bezanim.",
         "why_it_works": "Adds warmth without guilt-tripping.",
         "emotion_preview": ["warm", "safe"]
       }

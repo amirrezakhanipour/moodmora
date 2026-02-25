@@ -17,5 +17,22 @@
       "emoji_rate": 0.15,
       "do_not_use": ["ba ehteram", "lotfan"]
     }
+  },
+  "contact": {
+    "id": "contact_demo_01",
+    "display_name": "Sara",
+    "relation_tag": "partner",
+    "style_offsets": {
+      "warmth_offset": 10,
+      "directness_offset": 0,
+      "brevity_offset": 0,
+      "formality_offset": -5,
+      "emoji_rate_offset": 5
+    },
+    "sensitivities": {
+      "hates_sarcasm": true,
+      "sensitive_to_always_never": true
+    },
+    "forbidden_words": ["ba ehteram", "lotfan"]
   }
 }

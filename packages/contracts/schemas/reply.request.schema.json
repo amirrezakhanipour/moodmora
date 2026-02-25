@@ -45,6 +45,46 @@
           }
         }
       }
+    },
+
+    "contact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "display_name": { "type": "string", "minLength": 1 },
+        "relation_tag": {
+          "type": "string",
+          "enum": ["boss", "coworker", "friend", "family", "partner", "client", "other"]
+        },
+        "style_offsets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "warmth_offset": { "type": "integer", "minimum": -30, "maximum": 30 },
+            "directness_offset": { "type": "integer", "minimum": -30, "maximum": 30 },
+            "brevity_offset": { "type": "integer", "minimum": -30, "maximum": 30 },
+            "formality_offset": { "type": "integer", "minimum": -30, "maximum": 30 },
+            "emoji_rate_offset": { "type": "integer", "minimum": -30, "maximum": 30 }
+          }
+        },
+        "sensitivities": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "hates_sarcasm": { "type": "boolean" },
+            "hates_commands": { "type": "boolean" },
+            "sensitive_to_always_never": { "type": "boolean" },
+            "conflict_sensitive": { "type": "boolean" }
+          }
+        },
+        "forbidden_words": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "maxItems": 50
+        }
+      }
     }
   }
 }
